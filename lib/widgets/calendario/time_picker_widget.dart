@@ -5,10 +5,10 @@ class TimePickerWidget extends StatefulWidget {
   final Function(TimeOfDay) onConfirm;
 
   const TimePickerWidget({
-    Key? key,
+    super.key,
     required this.onCancel,
     required this.onConfirm,
-  }) : super(key: key);
+  });
 
   @override
   State<TimePickerWidget> createState() => _TimePickerWidgetState();
@@ -17,8 +17,8 @@ class TimePickerWidget extends StatefulWidget {
 class _TimePickerWidgetState extends State<TimePickerWidget> {
   late TimeOfDay _selectedTime;
   bool _isAM = true;
-  String _hour = '20';
-  String _minute = '00';
+  final String _hour = '20';
+  final String _minute = '00';
   bool _isHourFocused = true;
 
   @override

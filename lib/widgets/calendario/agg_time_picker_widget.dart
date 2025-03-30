@@ -8,13 +8,13 @@ class TimePickerWidget extends StatefulWidget {
   final VoidCallback onCancel;
 
   const TimePickerWidget({
-    Key? key,
+    super.key,
     required this.initialHour,
     required this.initialMinute,
     required this.isAM,
     required this.onTimeSelected,
     required this.onCancel,
-  }) : super(key: key);
+  });
 
   @override
   State<TimePickerWidget> createState() => _TimePickerWidgetState();

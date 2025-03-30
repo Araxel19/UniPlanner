@@ -4,7 +4,7 @@ import '../../widgets/bottom_navigation.dart';
 import 'registrar_curso.dart';
 
 class Calculadora extends StatelessWidget {
-  const Calculadora({Key? key}) : super(key: key);
+  const Calculadora({super.key});
 
   @override
   Widget build(BuildContext context) {

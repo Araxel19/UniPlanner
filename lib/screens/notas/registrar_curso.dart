@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class RegistrarCurso extends StatelessWidget {
-  const RegistrarCurso({Key? key}) : super(key: key);
+  const RegistrarCurso({super.key});
 
   @override
   Widget build(BuildContext context) {

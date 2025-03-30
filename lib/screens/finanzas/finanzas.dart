@@ -3,10 +3,9 @@ import '../../widgets/finanzas/transaction_item.dart';
 import '../../widgets/finanzas/segmented_button.dart';
 import '../../widgets/bottom_navigation.dart';
 import 'agregar_movimientos.dart';
-import 'transaction_details_screen.dart';
 
 class FinanzasScreen extends StatefulWidget {
-  const FinanzasScreen({Key? key}) : super(key: key);
+  const FinanzasScreen({super.key});
 
   @override
   State<FinanzasScreen> createState() => _FinanzasScreenState();

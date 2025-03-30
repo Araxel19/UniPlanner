@@ -3,7 +3,7 @@ import '../widgets/configuracion_menu_item.dart';
 import 'home_screen.dart'; // Importar pantalla home
 
 class ConfiguracionScreen extends StatelessWidget {
-  const ConfiguracionScreen({Key? key}) : super(key: key);
+  const ConfiguracionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

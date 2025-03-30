@@ -7,7 +7,7 @@ import 'configuracion.dart';
 import 'login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   void _logout(BuildContext context) {
     // Lógica para limpiar datos de sesión

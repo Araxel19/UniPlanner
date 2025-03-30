@@ -15,7 +15,7 @@ class AppAssets {
 }
 
 class Calendario extends StatelessWidget {
-  const Calendario({Key? key}) : super(key: key);
+  const Calendario({super.key});
 
   @override
   Widget build(BuildContext context) {

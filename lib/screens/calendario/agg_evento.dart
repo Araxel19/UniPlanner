@@ -3,7 +3,7 @@ import '../../widgets/calendario/date_picker_widget.dart';
 import '../../widgets/calendario/time_picker_widget.dart';
 
 class AggEvento extends StatefulWidget {
-  const AggEvento({Key? key}) : super(key: key);
+  const AggEvento({super.key});
 
   @override
   State<AggEvento> createState() => _AggEventoState();
@@ -138,7 +138,7 @@ class _AggEventoState extends State<AggEvento> {
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Center(
-                      child: Container(
+                      child: SizedBox(
                         width: 235,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,

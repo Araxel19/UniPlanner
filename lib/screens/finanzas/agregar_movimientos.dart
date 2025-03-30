@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
 
 class AgregarMovimientos extends StatefulWidget {
-  const AgregarMovimientos({Key? key}) : super(key: key);
+  const AgregarMovimientos({super.key});
 
   @override
   State<AgregarMovimientos> createState() => _AgregarMovimientosState();
@@ -82,7 +82,7 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
                       ),
                     ],
                   ),
-                  child: Container(
+                  child: SizedBox(
                     width: 207,
                     height: 48,
                     child: Row(

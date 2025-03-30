@@ -8,7 +8,7 @@ import '../../widgets/finanzas/action_button.dart';
 /// This screen shows various fields related to a transaction such as
 /// amount, category, date, and time, along with action buttons.
 class TransactionDetailsScreen extends StatelessWidget {
-  const TransactionDetailsScreen({Key? key}) : super(key: key);
+  const TransactionDetailsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -10,7 +10,7 @@ class TransactionItem extends StatelessWidget {
   final VoidCallback? onTap;
 
   const TransactionItem({
-    Key? key,
+    super.key,
     required this.date,
     required this.amount,
     required this.isIncome,
@@ -18,7 +18,7 @@ class TransactionItem extends StatelessWidget {
     required this.description,
     required this.icon,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

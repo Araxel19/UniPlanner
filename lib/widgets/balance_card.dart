@@ -6,10 +6,10 @@ class BalanceCard extends StatelessWidget {
   final List<Map<String, String>> expenses;
 
   const BalanceCard({
-    Key? key,
+    super.key,
     required this.balance,
     required this.expenses,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +47,7 @@ class BalanceCard extends StatelessWidget {
                   TextSpan(
                     text: '-${expense['name']}: \$${expense['amount']}\n',
                   )
-                ).toList(),
+                ),
               ],
             ),
           ),

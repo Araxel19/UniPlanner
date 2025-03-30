@@ -6,11 +6,11 @@ class CustomSegmentedButton extends StatelessWidget {
   final Function(int) onSegmentSelected;
 
   const CustomSegmentedButton({
-    Key? key,
+    super.key,
     required this.segments,
     required this.selectedIndex,
     required this.onSegmentSelected,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +53,12 @@ class _SegmentButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SegmentButton({
-    Key? key,
     required this.label,
     required this.isSelected,
     required this.isFirstSegment,
     required this.isLastSegment,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

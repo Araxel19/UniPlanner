@@ -7,12 +7,12 @@ class ConfiguracionMenuItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const ConfiguracionMenuItem({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     required this.description,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

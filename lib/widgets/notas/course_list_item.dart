@@ -7,12 +7,12 @@ class CourseListItem extends StatelessWidget {
   final List<String>? subItems;
 
   const CourseListItem({
-    Key? key,
+    super.key,
     required this.courseName,
     this.subtitle,
     this.hasSubItems = false,
     this.subItems,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

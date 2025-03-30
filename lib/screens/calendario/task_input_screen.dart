@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/calendario/agg_time_picker_widget.dart';
 
 class TaskInputScreen extends StatefulWidget {
-  const TaskInputScreen({Key? key}) : super(key: key);
+  const TaskInputScreen({super.key});
 
   @override
   State<TaskInputScreen> createState() => _TaskInputScreenState();

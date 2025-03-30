@@ -5,10 +5,10 @@ class DatePickerWidget extends StatefulWidget {
   final Function(DateTime) onConfirm;
 
   const DatePickerWidget({
-    Key? key,
+    super.key,
     required this.onCancel,
     required this.onConfirm,
-  }) : super(key: key);
+  });
 
   @override
   State<DatePickerWidget> createState() => _DatePickerWidgetState();

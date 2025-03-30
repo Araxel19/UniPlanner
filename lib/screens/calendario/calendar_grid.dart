@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class CalendarGrid extends StatelessWidget {
-  const CalendarGrid({Key? key}) : super(key: key);
+  const CalendarGrid({super.key});
 
   @override
   Widget build(BuildContext context) {
