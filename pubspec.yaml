@@ -1,0 +1,32 @@
+name: uniplanner
+description: Aplicación móvil con autenticación
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^4.0.3
+  cupertino_icons: ^1.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.jpg
+    - assets/images/back_icon.png
+    - assets/images/user_avatar.png
+    - assets/images/theme_icon.png
+    - assets/images/user_settings_icon.png
+    - assets/images/uniplanner.jpeg
+  fonts:
+    - family: Roboto
+
+    - family: Inter
