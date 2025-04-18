@@ -117,7 +117,7 @@ class _EditEventoState extends State<EditEvento> {
         isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFD9D9D9);
     final chipColor =
         isDarkMode ? const Color(0xFF444444) : const Color(0xFFFEF7FF);
-    final buttonColor = const Color(0xFF65558F);
+    const buttonColor = Color(0xFF65558F);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -170,7 +170,7 @@ class _EditEventoState extends State<EditEvento> {
                             color: buttonColor,
                             borderRadius: BorderRadius.circular(5),
                           ),
-                          child: Text(
+                          child: const Text(
                             'Actualizar',
                             style: TextStyle(fontSize: 14, color: Colors.white),
                           ),

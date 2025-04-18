@@ -82,7 +82,7 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
                       ),
                     ],
                   ),
-                  child: Container(
+                  child: SizedBox(
                     width: 207,
                     height: 48,
                     child: Row(

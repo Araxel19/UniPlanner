@@ -56,7 +56,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return Container(
       decoration: BoxDecoration(
           color: theme.appBarTheme.backgroundColor ??
-              theme.colorScheme.background),
+              theme.colorScheme.surface),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(21, 12, 21, 12),
       child: Image.asset(
@@ -72,7 +72,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return Container(
       decoration: BoxDecoration(
         color:
-            theme.appBarTheme.backgroundColor ?? theme.colorScheme.background,
+            theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface,
         border: Border(
           bottom: BorderSide(
             color: theme.dividerColor,

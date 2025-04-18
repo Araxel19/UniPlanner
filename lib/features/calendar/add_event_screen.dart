@@ -102,7 +102,7 @@ class _AggEventoState extends State<AggEvento> {
         isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFD9D9D9);
     final chipColor =
         isDarkMode ? const Color(0xFF444444) : const Color(0xFFFEF7FF);
-    final buttonColor = const Color(0xFF65558F);
+    const buttonColor = Color(0xFF65558F);
 
     return Scaffold(
       backgroundColor: backgroundColor,

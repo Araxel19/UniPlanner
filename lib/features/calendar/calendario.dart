@@ -69,8 +69,8 @@ class _CalendarioState extends State<Calendario> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldColor = Theme.of(context).colorScheme.background;
-    final textColor = Theme.of(context).colorScheme.onBackground;
+    final scaffoldColor = Theme.of(context).colorScheme.surface;
+    final textColor = Theme.of(context).colorScheme.onSurface;
     final iconColor = Theme.of(context).iconTheme.color ?? textColor;
 
     return Scaffold(

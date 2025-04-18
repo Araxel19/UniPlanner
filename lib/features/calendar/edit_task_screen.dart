@@ -126,7 +126,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFD9D9D9);
     final chipColor =
         isDarkMode ? const Color(0xFF444444) : const Color(0xFFFEF7FF);
-    final buttonColor = const Color(0xFF6750A4);
+    const buttonColor = Color(0xFF6750A4);
 
     return Scaffold(
       backgroundColor: backgroundColor,
