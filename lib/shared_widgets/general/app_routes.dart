@@ -13,6 +13,7 @@ import '../../features/finanzas/finanzas_screen.dart';
 import '../../features/finanzas/agregar_movimientos.dart';
 import '../../features/notas/calculadora.dart';
 import '../../features/notas/registrar_curso.dart';
+import '../../features/recordatorios/recordatorios_screen.dart';
 
 class AppRoutes {
   // Rutas principales
@@ -35,6 +36,9 @@ class AppRoutes {
   // Notas
   static const String calculadora = '/calculadora';
   static const String registrarCurso = '/registrar_curso';
+
+  //Recordatorios
+  static const String recordatorios = '/recordatorios';
 
   static Map<String, WidgetBuilder> get routes => {
     login: (context) => const LoginScreen(),
@@ -98,6 +102,9 @@ class AppRoutes {
     // Notas
     calculadora: (context) => const Calculadora(),
     registrarCurso: (context) => const RegistrarCurso(),
+
+    // Recordatorios
+    recordatorios: (context) => const RecordatoriosScreen(),
   };
 
   // Método helper para navegar con argumentos

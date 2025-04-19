@@ -81,11 +81,9 @@ class BottomNavigation extends StatelessWidget {
     Navigator.pushReplacementNamed(context, AppRoutes.calculadora);
   }
 
-  void _navigateToTasks(BuildContext context) => _showPlaceholder(context, "Tareas");
-
-  void _showPlaceholder(BuildContext context, String screenName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Pantalla de $screenName en desarrollo 🚧")),
-    );
+  void _navigateToTasks(BuildContext context) {
+    Navigator.pushReplacementNamed(context, AppRoutes.recordatorios);
   }
+
+
 }
