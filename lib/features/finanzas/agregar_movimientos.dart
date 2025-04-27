@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../core/utils/constants.dart';
+import 'package:provider/provider.dart';
+import '../../core/db/sqlite_helper.dart';
 
 class AgregarMovimientos extends StatefulWidget {
   const AgregarMovimientos({Key? key}) : super(key: key);
@@ -13,6 +14,14 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
+  String? _selectedCategory;
+
+  // Mapa de íconos constantes para las categorías
+  final Map<String, IconData> iconMap = {
+    'Gasto': Icons.arrow_circle_down, // Mapea el nombre de la categoría a un ícono fijo
+    'Ingreso': Icons.arrow_circle_up,
+    // Agrega más categorías aquí con sus íconos respectivos
+  };
 
   @override
   void dispose() {
@@ -24,10 +33,11 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   void _toggleExpenseIncome(bool isExpense) {
     setState(() {
       _isExpenseSelected = isExpense;
+      _selectedCategory = null;
     });
   }
 
-  void _selectDate() async {
+  Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -43,322 +53,169 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final db = Provider.of<SQLiteHelper>(context);
+    final currentUser = Provider.of<Map<String, dynamic>?>(context);
+
     return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxWidth: 480),
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Logo
-                Padding(
-                  padding: const EdgeInsets.only(left: 21),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Icon(
-                      Icons.account_balance_wallet,
-                      size: 54,
-                      color: Colors.blue[800],
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Agregar Movimiento'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Selector de tipo (ingreso/gasto)
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment<bool>(
+                  value: true,
+                  label: Text('Gasto'),
+                  icon: Icon(Icons.arrow_circle_down),
+                ),
+                ButtonSegment<bool>(
+                  value: false,
+                  label: Text('Ingreso'),
+                  icon: Icon(Icons.arrow_circle_up),
+                ),
+              ],
+              selected: <bool>{_isExpenseSelected},
+              onSelectionChanged: (Set<bool> newSelection) {
+                _toggleExpenseIncome(newSelection.first);
+              },
+            ),
+            const SizedBox(height: 24),
+            // Campo de monto
+            TextFormField(
+              controller: _amountController,
+              decoration: InputDecoration(
+                labelText: 'Monto',
+                prefixIcon: const Icon(Icons.attach_money),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 24),
+            // Selector de categoría
+            FutureBuilder<List<Map<String, dynamic>>>( 
+              future: db.getCategoriesByType(
+                isIncome: !_isExpenseSelected,
+                userId: currentUser?['id'] ?? 0,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const CircularProgressIndicator();
+                }
+
+                final categories = snapshot.data ?? [];
+                return DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: InputDecoration(
+                    labelText: 'Categoría',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ),
-
-                // Botón segmentado
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 14, horizontal: 70),
-                  decoration: BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(),
-                        blurRadius: 4,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: SizedBox(
-                    width: 207,
-                    height: 48,
-                    child: Row(
-                      children: [
-                        // Gastos
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _toggleExpenseIncome(true),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: _isExpenseSelected
-                                    ? AppColors.purple
-                                    : Colors.transparent,
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(100),
-                                  bottomLeft: Radius.circular(100),
-                                ),
-                                border: Border.all(color: AppColors.outline),
-                              ),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_circle_down,
-                                      color: _isExpenseSelected
-                                          ? Colors.white
-                                          : AppColors.textMedium,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'GASTOS',
-                                      style: AppTextStyles.button.copyWith(
-                                        color: _isExpenseSelected
-                                            ? Colors.white
-                                            : AppColors.textMedium,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // Ingresos
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _toggleExpenseIncome(false),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: !_isExpenseSelected
-                                    ? AppColors.purple
-                                    : Colors.transparent,
-                                borderRadius: const BorderRadius.only(
-                                  topRight: Radius.circular(100),
-                                  bottomRight: Radius.circular(100),
-                                ),
-                                border: Border.all(color: AppColors.outline),
-                              ),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_circle_up,
-                                      color: !_isExpenseSelected
-                                          ? Colors.white
-                                          : AppColors.textDark,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'INGRESOS',
-                                      style: AppTextStyles.button.copyWith(
-                                        color: !_isExpenseSelected
-                                            ? Colors.white
-                                            : AppColors.textDark,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Monto
-                Container(
-                  margin: const EdgeInsets.only(top: 15),
-                  height: 32,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.outlineVariant),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.currency_exchange, size: 18),
-                        SizedBox(width: 8),
-                        Text('20000 COP', style: AppTextStyles.label),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Categorías
-                const Padding(
-                  padding: EdgeInsets.only(top: 32),
-                  child: Text('CATEGORÍAS', style: AppTextStyles.sectionTitle),
-                ),
-
-                // Íconos de categorías
-                Container(
-                  margin: const EdgeInsets.only(top: 29),
-                  width: 304,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildCategoryButton(Icons.fastfood),
-                      _buildCategoryButton(Icons.directions_car),
-                      _buildCategoryButton(Icons.shopping_cart),
-                      _buildCategoryButton(Icons.health_and_safety),
-                      _buildCategoryButton(Icons.sports_esports),
-                    ],
-                  ),
-                ),
-
-                // Botón añadir categoría
-                Container(
-                  margin: const EdgeInsets.only(top: 23),
-                  child: IconButton(
-                    icon: const Icon(Icons.add_circle, size: 40),
-                    onPressed: () {},
-                  ),
-                ),
-
-                // Selector de fecha
-                GestureDetector(
-                  onTap: _selectDate,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 23),
-                    height: 27,
-                    width: 327,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.outlineVariant),
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                  items: categories.map((category) {
+                    return DropdownMenuItem<String>(
+                      value: category['name'],
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('Fecha', style: AppTextStyles.label),
-                          SizedBox(width: 22),
-                          Icon(Icons.calendar_today, size: 18),
+                          Icon(iconMap[category['name']] ?? Icons.help_outline), // Usar el ícono mapeado
+                          const SizedBox(width: 8),
+                          Text(category['name']),
                         ],
                       ),
-                    ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCategory = value;
+                    });
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            // Selector de fecha
+            OutlinedButton(
+              onPressed: _selectDate,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.all(16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Fecha: ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                  const Icon(Icons.calendar_today),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Campo de descripción
+            TextFormField(
+              controller: _descriptionController,
+              decoration: InputDecoration(
+                labelText: 'Descripción',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 32),
+            // Botones de acción
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      if (_amountController.text.isEmpty ||
+                          _selectedCategory == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'Por favor complete todos los campos requeridos'),
+                          ),
+                        );
+                        return;
+                      }
+
+                      db.addTransaction(
+                        amount: double.parse(_amountController.text),
+                        description: _descriptionController.text,
+                        category: _selectedCategory!,
+                        isIncome: !_isExpenseSelected,
+                        date: _selectedDate,
+                        userId: currentUser?['id'] ?? 0,
+                      );
+
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Guardar'),
                   ),
                 ),
-
-                // Descripción
-                const Padding(
-                  padding: EdgeInsets.only(top: 22),
-                  child: Text('DESCRIPCIÓN', style: AppTextStyles.sectionTitle),
-                ),
-
-                Container(
-                  margin: const EdgeInsets.only(top: 7),
-                  width: 327,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.outlineVariant),
-                  ),
-                  child: TextField(
-                    controller: _descriptionController,
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(8),
-                    ),
-                  ),
-                ),
-
-                // Botones de acción
-                Container(
-                  margin: const EdgeInsets.only(top: 94),
-                  width: 295,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildActionButton(
-                          icon: Icons.save,
-                          label: 'Guardar',
-                          onPressed: () {},
-                        ),
-                      ),
-                      const SizedBox(width: 53),
-                      Expanded(
-                        child: _buildActionButton(
-                          icon: Icons.cancel,
-                          label: 'Cancelar',
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Indicador inferior
-                Container(
-                  margin: const EdgeInsets.only(top: 100),
-                  width: 134,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(100),
-                    color: AppColors.black,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryButton(IconData icon) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        borderRadius: BorderRadius.circular(100),
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: Colors.white, size: 24),
-        onPressed: () {},
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.purple,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(100),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          Text(label, style: AppTextStyles.button),
-        ],
       ),
     );
   }

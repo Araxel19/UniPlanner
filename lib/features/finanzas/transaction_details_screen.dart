@@ -1,171 +1,173 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../shared_widgets/finanzas/transaction_field.dart';
-import '../../shared_widgets/finanzas/action_button.dart';
 
 class TransactionDetailsScreen extends StatelessWidget {
-  const TransactionDetailsScreen({Key? key}) : super(key: key);
+  final Map<String, dynamic> transaction;
+
+  const TransactionDetailsScreen({Key? key, required this.transaction})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Set status bar to be transparent
+    final theme = Theme.of(context);
+    final isIncome = transaction['isIncome'] == 1;
+
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: theme.brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
       ),
     );
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // Status bar space
-          Container(
-            height: 44,
-            color: Colors.transparent,
-          ),
-
-          // Background ellipse
-          Positioned(
-            top: 33,
-            left: 0,
-            child: Opacity(
-              opacity: 0.5,
-              child: Container(
-                width: MediaQuery.of(context).size.width,
-                height: 76,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 100,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(),
-                      blurRadius: 4,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.primaryColor,
+                      theme.primaryColorLight,
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                const Padding(
-                  padding: EdgeInsets.only(top: 17),
-                  child: Center(
-                    child: Text(
-                      'Detalles de la transacción',
-                      style: TextStyle(
-                        fontFamily: 'Roboto',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.black,
-                      ),
-                      semanticsLabel: 'Detalles de la transacción heading',
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: isIncome
+                        ? Colors.green.withOpacity(0.2)
+                        : Colors.red.withOpacity(0.2),
+                    child: Icon(
+                      _getIconForCategory(transaction['category']),
+                      size: 30,
+                      color: isIncome ? Colors.green : Colors.red,
                     ),
                   ),
-                ),
-
-                // Transaction fields
-                const Expanded(
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
-                        children: [
-                          SizedBox(height: 100),
-                          TransactionField(
-                            label: 'Cantidad',
-                            value: '\$ 3.300 COP',
-                          ),
-                          SizedBox(height: 47),
-                          TransactionField(
-                            label: 'Categoría',
-                            value: 'Transporte',
-                          ),
-                          SizedBox(height: 47),
-                          TransactionField(
-                            label: 'Fecha',
-                            value: '2 de marzo de 2025',
-                          ),
-                          SizedBox(height: 47),
-                          TransactionField(
-                            label: 'Hora',
-                            value: '12:15',
-                          ),
-                          SizedBox(height: 100),
-                        ],
-                      ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '${isIncome ? '+' : '-'}\$${transaction['amount'].toStringAsFixed(2)}',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: isIncome ? Colors.green : Colors.red,
                     ),
                   ),
-                ),
-
-                // Action buttons
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 93),
-                  child: Column(
+                  const SizedBox(height: 8),
+                  Text(
+                    transaction['description'],
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 24),
+                  _buildDetailRow(
+                    context,
+                    'Categoría',
+                    transaction['category'],
+                    Icons.category,
+                  ),
+                  _buildDetailRow(
+                    context,
+                    'Fecha',
+                    '${transaction['date']}',
+                    Icons.calendar_today,
+                  ),
+                  _buildDetailRow(
+                    context,
+                    'Hora',
+                    '${transaction['time']}',
+                    Icons.access_time,
+                  ),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ActionButton(
-                            label: 'Editar',
-                            icon: Icons.edit,
-                            onPressed: () {
-                              // Handle edit action
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Editar pressed')),
-                              );
-                            },
-                          ),
-                          ActionButton(
-                            label: 'Eliminar',
-                            icon: Icons.delete,
-                            onPressed: () {
-                              // Handle delete action
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Eliminar pressed')),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 19),
-                      ActionButton(
-                        label: 'Volver',
-                        icon: Icons.chevron_left,
+                      FilledButton.icon(
                         onPressed: () {
-                          // Handle back action
-                          Navigator.of(context).pop();
+                          // Editar transacción
                         },
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Editar'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () {
+                          // Eliminar transacción
+                        },
+                        icon: const Icon(Icons.delete),
+                        label: const Text('Eliminar'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                        ),
                       ),
                     ],
                   ),
-                ),
-
-                // Home indicator
-                Container(
-                  height: 34,
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 134,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildDetailRow(
+      BuildContext context, String label, String value, IconData icon) {
+    final theme = Theme.of(context);
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: theme.primaryColor),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                ),
+              ),
+              Text(
+                value,
+                style: theme.textTheme.bodyLarge,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getIconForCategory(String category) {
+    switch (category) {
+      case 'Comida':
+        return Icons.fastfood;
+      case 'Transporte':
+        return Icons.directions_car;
+      case 'Compras':
+        return Icons.shopping_cart;
+      case 'Salud':
+        return Icons.health_and_safety;
+      case 'Entretenimiento':
+        return Icons.sports_esports;
+      case 'Salario':
+        return Icons.work;
+      case 'Regalos':
+        return Icons.card_giftcard;
+      default:
+        return Icons.attach_money;
+    }
   }
 }

@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-
-/* HOLA MUNDO... */
+import 'package:flutter/material.dart';
 
 class SQLiteHelper {
   static Database? _database;
@@ -20,46 +19,254 @@ class SQLiteHelper {
     String path = join(await getDatabasesPath(), 'uniplanner.db');
     return openDatabase(
       path,
-      version: 3, // Incrementamos la versión por los cambios
+      version: 4,
       onCreate: (db, version) async {
-        // Crear tabla de usuarios
+        // Crear tablas existentes (usuarios, eventos, tareas)
         await db.execute('''
-          CREATE TABLE users(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            email TEXT NOT NULL,
-            password TEXT NOT NULL
-          )
-        ''');
+        CREATE TABLE users(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL,
+          email TEXT NOT NULL,
+          password TEXT NOT NULL
+        )
+      ''');
 
-        // Crear tabla de eventos
         await db.execute('''
-          CREATE TABLE events(
+        CREATE TABLE events(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          date TEXT NOT NULL,
+          startTime TEXT NOT NULL,
+          endTime TEXT NOT NULL,
+          description TEXT NOT NULL,
+          userId INTEGER,
+          FOREIGN KEY (userId) REFERENCES users(id)
+        )
+      ''');
+
+        await db.execute('''
+        CREATE TABLE tasks(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          dueDate TEXT NOT NULL,
+          dueTime TEXT NOT NULL,
+          description TEXT,
+          isCompleted INTEGER DEFAULT 0,
+          listName TEXT DEFAULT 'Ideas',
+          userId INTEGER,
+          FOREIGN KEY (userId) REFERENCES users(id)
+        )
+      ''');
+
+        // Crear Tabla Finanzas
+        await db.execute('''
+        CREATE TABLE transactions(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          amount REAL NOT NULL,
+          description TEXT NOT NULL,
+          category TEXT NOT NULL,
+          isIncome INTEGER NOT NULL, -- 0 para gasto, 1 para ingreso
+          date TEXT NOT NULL, -- Fecha en formato YYYY-MM-DD
+          time TEXT NOT NULL, -- Hora en formato HH:MM
+          userId INTEGER,
+          FOREIGN KEY (userId) REFERENCES users(id)
+        )
+      ''');
+
+        // Tabla para categorías personalizadas
+        await db.execute('''
+        CREATE TABLE categories(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          iconCode INTEGER NOT NULL, -- Código del icono (Icons.codePoint)
+          isIncome INTEGER NOT NULL, -- 0 para gasto, 1 para ingreso
+          userId INTEGER,
+          FOREIGN KEY (userId) REFERENCES users(id)
+        )
+      ''');
+
+        // Insertar categorías predeterminadas
+        final defaultCategories = [
+          // Gastos (isIncome = 0)
+          {
+            'name': 'Comida',
+            'iconCode': Icons.fastfood.codePoint,
+            'isIncome': 0,
+            'userId': null // Categoría global
+          },
+          {
+            'name': 'Transporte',
+            'iconCode': Icons.directions_car.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Compras',
+            'iconCode': Icons.shopping_cart.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Salud',
+            'iconCode': Icons.health_and_safety.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Entretenimiento',
+            'iconCode': Icons.sports_esports.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Educación',
+            'iconCode': Icons.school.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Hogar',
+            'iconCode': Icons.home.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+          {
+            'name': 'Ropa',
+            'iconCode': Icons.checkroom.codePoint,
+            'isIncome': 0,
+            'userId': null
+          },
+
+          // Ingresos (isIncome = 1)
+          {
+            'name': 'Salario',
+            'iconCode': Icons.work.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+          {
+            'name': 'Ventas',
+            'iconCode': Icons.sell.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+          {
+            'name': 'Inversiones',
+            'iconCode': Icons.trending_up.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+          {
+            'name': 'Regalos',
+            'iconCode': Icons.card_giftcard.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+          {
+            'name': 'Préstamos',
+            'iconCode': Icons.money.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+          {
+            'name': 'Otros ingresos',
+            'iconCode': Icons.attach_money.codePoint,
+            'isIncome': 1,
+            'userId': null
+          },
+        ];
+
+        // Insertar todas las categorías predeterminadas
+        for (var category in defaultCategories) {
+          await db.insert('categories', category);
+        }
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 4) {
+          // Migración a la versión 4 - agregar tablas de finanzas
+          await db.execute('''
+          CREATE TABLE transactions(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            date TEXT NOT NULL,
-            startTime TEXT NOT NULL,
-            endTime TEXT NOT NULL,
+            amount REAL NOT NULL,
             description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            isIncome INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
             userId INTEGER,
             FOREIGN KEY (userId) REFERENCES users(id)
           )
         ''');
 
-        // Crear tabla de tareas (modificada)
-        await db.execute('''
-          CREATE TABLE tasks(
+          await db.execute('''
+          CREATE TABLE categories(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            dueDate TEXT NOT NULL,
-            dueTime TEXT NOT NULL,
-            description TEXT,
-            isCompleted INTEGER DEFAULT 0,
-            listName TEXT DEFAULT 'Ideas',
+            name TEXT NOT NULL,
+            iconCode INTEGER NOT NULL,
+            isIncome INTEGER NOT NULL,
             userId INTEGER,
             FOREIGN KEY (userId) REFERENCES users(id)
           )
         ''');
+
+          // Insertar categorías predeterminadas durante la migración
+          final defaultCategories = [
+            // Gastos
+            {
+              'name': 'Comida',
+              'iconCode': Icons.fastfood.codePoint,
+              'isIncome': 0,
+              'userId': null
+            },
+            {
+              'name': 'Transporte',
+              'iconCode': Icons.directions_car.codePoint,
+              'isIncome': 0,
+              'userId': null
+            },
+            {
+              'name': 'Compras',
+              'iconCode': Icons.shopping_cart.codePoint,
+              'isIncome': 0,
+              'userId': null
+            },
+            {
+              'name': 'Salud',
+              'iconCode': Icons.health_and_safety.codePoint,
+              'isIncome': 0,
+              'userId': null
+            },
+            {
+              'name': 'Entretenimiento',
+              'iconCode': Icons.sports_esports.codePoint,
+              'isIncome': 0,
+              'userId': null
+            },
+            // Ingresos
+            {
+              'name': 'Salario',
+              'iconCode': Icons.work.codePoint,
+              'isIncome': 1,
+              'userId': null
+            },
+            {
+              'name': 'Regalos',
+              'iconCode': Icons.card_giftcard.codePoint,
+              'isIncome': 1,
+              'userId': null
+            },
+            {
+              'name': 'Otros ingresos',
+              'iconCode': Icons.attach_money.codePoint,
+              'isIncome': 1,
+              'userId': null
+            },
+          ];
+
+          for (var category in defaultCategories) {
+            await db.insert('categories', category);
+          }
+        }
       },
     );
   }
@@ -386,5 +593,238 @@ class SQLiteHelper {
       limit: 1,
     );
     return result.isEmpty;
+  }
+
+  // ==================== MÉTODOS PARA TRANSACCIONES ====================
+
+  /// Agrega una nueva transacción
+  Future<int> addTransaction({
+    required double amount,
+    required String description,
+    required String category,
+    required bool isIncome,
+    required DateTime date,
+    required int userId,
+  }) async {
+    final db = await database;
+    return await db.insert('transactions', {
+      'amount': amount,
+      'description': description,
+      'category': category,
+      'isIncome': isIncome ? 1 : 0,
+      'date': _formatDate(date),
+      'time': _formatTime(date),
+      'userId': userId,
+    });
+  }
+
+  /// Obtiene todas las transacciones de un usuario
+  Future<List<Map<String, dynamic>>> getUserTransactions(int userId) async {
+    final db = await database;
+    return await db.query(
+      'transactions',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'date DESC, time DESC',
+    );
+  }
+
+  /// Obtiene transacciones por periodo (día, semana, mes, año)
+  Future<List<Map<String, dynamic>>> getTransactionsByPeriod({
+    required String period,
+    required int userId,
+    DateTime? startDate,
+  }) async {
+    final db = await database;
+    final now = startDate ?? DateTime.now();
+    String whereClause = 'userId = ?';
+    List<dynamic> whereArgs = [userId];
+
+    switch (period.toLowerCase()) {
+      case 'día':
+        final dateStr = _formatDate(now);
+        whereClause += ' AND date = ?';
+        whereArgs.add(dateStr);
+        break;
+      case 'semana':
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 6));
+        whereClause += ' AND date BETWEEN ? AND ?';
+        whereArgs.addAll([_formatDate(startOfWeek), _formatDate(endOfWeek)]);
+        break;
+      case 'mes':
+        final firstDay = DateTime(now.year, now.month, 1);
+        final lastDay = DateTime(now.year, now.month + 1, 0);
+        whereClause += ' AND date BETWEEN ? AND ?';
+        whereArgs.addAll([_formatDate(firstDay), _formatDate(lastDay)]);
+        break;
+      case 'año':
+        final firstDay = DateTime(now.year, 1, 1);
+        final lastDay = DateTime(now.year, 12, 31);
+        whereClause += ' AND date BETWEEN ? AND ?';
+        whereArgs.addAll([_formatDate(firstDay), _formatDate(lastDay)]);
+        break;
+    }
+
+    return await db.query(
+      'transactions',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'date DESC, time DESC',
+    );
+  }
+
+  /// Obtiene el balance total de un usuario
+  Future<double> getBalance(int userId) async {
+    final db = await database;
+    final transactions = await db.query(
+      'transactions',
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+
+    return transactions.fold<double>(0, (sum, transaction) {
+      final amount = transaction['amount'] as double;
+      return transaction['isIncome'] == 1 ? sum + amount : sum - amount;
+    });
+  }
+
+  /// Actualiza una transacción existente
+  Future<int> updateTransaction({
+    required int id,
+    required double amount,
+    required String description,
+    required String category,
+    required bool isIncome,
+    required DateTime date,
+  }) async {
+    final db = await database;
+    return await db.update(
+      'transactions',
+      {
+        'amount': amount,
+        'description': description,
+        'category': category,
+        'isIncome': isIncome ? 1 : 0,
+        'date': _formatDate(date),
+        'time': _formatTime(date),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Elimina una transacción
+  Future<int> deleteTransaction(int id) async {
+    final db = await database;
+    return await db.delete(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Obtiene una transacción por su ID
+  Future<Map<String, dynamic>?> getTransactionById(int id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  // ==================== MÉTODOS PARA CATEGORÍAS ====================
+
+  /// Agrega una nueva categoría personalizada
+  Future<int> addCategory({
+    required String name,
+    required IconData icon,
+    required bool isIncome,
+    required int userId,
+  }) async {
+    final db = await database;
+    return await db.insert('categories', {
+      'name': name,
+      'iconCode': icon.codePoint,
+      'isIncome': isIncome ? 1 : 0,
+      'userId': userId,
+    });
+  }
+
+  /// Obtiene todas las categorías de un usuario
+  Future<List<Map<String, dynamic>>> getUserCategories(int userId) async {
+    final db = await database;
+    return await db.query(
+      'categories',
+      where: 'userId = ? OR userId IS NULL', // Categorías globales y personales
+      whereArgs: [userId],
+    );
+  }
+
+  /// Obtiene categorías por tipo (ingreso/gasto)
+  Future<List<Map<String, dynamic>>> getCategoriesByType({
+    required bool isIncome,
+    required int userId,
+  }) async {
+    final db = await database;
+    return await db.query(
+      'categories',
+      where: '(userId = ? OR userId IS NULL) AND isIncome = ?',
+      whereArgs: [userId, isIncome ? 1 : 0],
+    );
+  }
+
+  /// Actualiza una categoría existente
+  Future<int> updateCategory({
+    required int id,
+    required String name,
+    required IconData icon,
+    required bool isIncome,
+  }) async {
+    final db = await database;
+    return await db.update(
+      'categories',
+      {
+        'name': name,
+        'iconCode': icon.codePoint,
+        'isIncome': isIncome ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Elimina una categoría (solo si no está en uso)
+  Future<int> deleteCategory(int id) async {
+    final db = await database;
+    // Verificar si la categoría está en uso
+    final transactions = await db.query(
+      'transactions',
+      where: 'category = (SELECT name FROM categories WHERE id = ?)',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (transactions.isNotEmpty) {
+      throw Exception('No se puede eliminar una categoría en uso');
+    }
+
+    return await db.delete(
+      'categories',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==================== HELPERS ====================
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatTime(DateTime date) {
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }

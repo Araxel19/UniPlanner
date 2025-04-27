@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'shared_widgets/general/app_routes.dart';
 import '/providers/theme_provider.dart';
+import '/core/db/sqlite_helper.dart'; // Asegúrate de importar SQLiteHelper
 
 void main() => runApp(const MainWrapper());
 
@@ -14,8 +15,11 @@ class MainWrapper extends StatelessWidget {
       future: _initializeTheme(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
-          return ChangeNotifierProvider(
-            create: (_) => snapshot.data as ThemeProvider,
+          return MultiProvider(
+            providers: [
+              ChangeNotifierProvider(create: (_) => snapshot.data as ThemeProvider),
+              Provider(create: (_) => SQLiteHelper()), // Agrega SQLiteHelper aquí
+            ],
             child: const MyApp(),
           );
         }
