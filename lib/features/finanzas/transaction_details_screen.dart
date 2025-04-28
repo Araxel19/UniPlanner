@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../../core/db/sqlite_helper.dart';
+import 'editar_transaccion.dart';
 
 class TransactionDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -94,14 +97,58 @@ class TransactionDetailsScreen extends StatelessWidget {
                     children: [
                       FilledButton.icon(
                         onPressed: () {
-                          // Editar transacción
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  EditarTransaccion(transaction: transaction),
+                            ),
+                          ).then((updated) {
+                            if (updated == true) {
+                              Navigator.pop(context,
+                                  true); // Refrescar la pantalla anterior
+                            }
+                          });
                         },
                         icon: const Icon(Icons.edit),
                         label: const Text('Editar'),
                       ),
                       FilledButton.icon(
-                        onPressed: () {
-                          // Eliminar transacción
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Confirmar'),
+                              content:
+                                  const Text('¿Eliminar esta transacción?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Cancelar'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Eliminar'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            try {
+                              await Provider.of<SQLiteHelper>(context,
+                                      listen: false)
+                                  .deleteTransaction(transaction['id']);
+                              Navigator.pop(
+                                  context, true); // Indica que se eliminó
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('Error al eliminar: $e')),
+                              );
+                            }
+                          }
                         },
                         icon: const Icon(Icons.delete),
                         label: const Text('Eliminar'),
@@ -123,7 +170,7 @@ class TransactionDetailsScreen extends StatelessWidget {
   Widget _buildDetailRow(
       BuildContext context, String label, String value, IconData icon) {
     final theme = Theme.of(context);
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(

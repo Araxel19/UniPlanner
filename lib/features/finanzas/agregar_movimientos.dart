@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/db/sqlite_helper.dart';
+import 'package:provider/provider.dart';
 
 class AgregarMovimientos extends StatefulWidget {
   const AgregarMovimientos({Key? key}) : super(key: key);
@@ -15,13 +17,21 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   final TextEditingController _amountController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   String? _selectedCategory;
+  Map<String, dynamic>? _selectedCategoryData;
+  int? _userId;
 
-  // Mapa de íconos constantes para las categorías
-  final Map<String, IconData> iconMap = {
-    'Gasto': Icons.arrow_circle_down, // Mapea el nombre de la categoría a un ícono fijo
-    'Ingreso': Icons.arrow_circle_up,
-    // Agrega más categorías aquí con sus íconos respectivos
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userId = prefs.getInt('userId');
+    });
+  }
 
   @override
   void dispose() {
@@ -34,6 +44,7 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
     setState(() {
       _isExpenseSelected = isExpense;
       _selectedCategory = null;
+      _selectedCategoryData = null;
     });
   }
 
@@ -55,7 +66,6 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final db = Provider.of<SQLiteHelper>(context);
-    final currentUser = Provider.of<Map<String, dynamic>?>(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -97,46 +107,100 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 24),
-            // Selector de categoría
-            FutureBuilder<List<Map<String, dynamic>>>( 
+            // Selector de categoría mejorado con dropdown_button2
+            FutureBuilder<List<Map<String, dynamic>>>(
               future: db.getCategoriesByType(
                 isIncome: !_isExpenseSelected,
-                userId: currentUser?['id'] ?? 0,
+                userId: _userId ?? 0,
               ),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const CircularProgressIndicator();
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return const Text('Error al cargar categorías');
                 }
 
                 final categories = snapshot.data ?? [];
-                return DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: InputDecoration(
-                    labelText: 'Categoría',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  items: categories.map((category) {
-                    return DropdownMenuItem<String>(
-                      value: category['name'],
-                      child: Row(
-                        children: [
-                          Icon(iconMap[category['name']] ?? Icons.help_outline), // Usar el ícono mapeado
-                          const SizedBox(width: 8),
-                          Text(category['name']),
-                        ],
+                if (categories.isEmpty) {
+                  return const Text('No hay categorías disponibles');
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Categoría', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 4),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton2<String>(
+                        value: _selectedCategory,
+                        hint: const Text('Seleccione una categoría'),
+                        items: categories.map((category) {
+                          return DropdownMenuItem<String>(
+                            value: category['name'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  IconData(
+                                    category['iconCode'],
+                                    fontFamily: 'MaterialIcons',
+                                  ),
+                                  size: 20,
+                                  color: theme.primaryColor,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(category['name']),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _selectedCategory = value;
+                              _selectedCategoryData = categories.firstWhere(
+                                (c) => c['name'] == value,
+                                orElse: () => {},
+                              );
+                            });
+                          }
+                        },
+                        buttonStyleData: ButtonStyleData(
+                          height: 50,
+                          width: double.infinity,
+                          padding: const EdgeInsets.only(left: 14, right: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: theme.dividerColor,
+                            ),
+                          ),
+                        ),
+                        dropdownStyleData: DropdownStyleData(
+                          maxHeight: 250,
+                          width: MediaQuery.of(context).size.width - 32,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: theme.cardColor,
+                          ),
+                          offset: const Offset(0, -5),
+                          scrollbarTheme: ScrollbarThemeData(
+                            radius: const Radius.circular(40),
+                            thickness: MaterialStateProperty.all<double>(6),
+                            thumbVisibility: MaterialStateProperty.all<bool>(true),
+                          ),
+                        ),
+                        menuItemStyleData: const MenuItemStyleData(
+                          height: 40,
+                          padding: EdgeInsets.only(left: 14, right: 14),
+                        ),
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCategory = value;
-                    });
-                  },
+                    ),
+                  ],
                 );
               },
             ),
@@ -179,7 +243,15 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      if (_userId == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Debes iniciar sesión para agregar movimientos'),
+                          ),
+                        );
+                        return;
+                      }
                       if (_amountController.text.isEmpty ||
                           _selectedCategory == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -191,16 +263,23 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
                         return;
                       }
 
-                      db.addTransaction(
-                        amount: double.parse(_amountController.text),
-                        description: _descriptionController.text,
-                        category: _selectedCategory!,
-                        isIncome: !_isExpenseSelected,
-                        date: _selectedDate,
-                        userId: currentUser?['id'] ?? 0,
-                      );
-
-                      Navigator.pop(context);
+                      try {
+                        await db.addTransaction(
+                          amount: double.parse(_amountController.text),
+                          description: _descriptionController.text,
+                          category: _selectedCategory!,
+                          isIncome: !_isExpenseSelected,
+                          date: _selectedDate,
+                          userId: _userId!,
+                        );
+                        Navigator.pop(context);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error al guardar: ${e.toString()}'),
+                          ),
+                        );
+                      }
                     },
                     child: const Text('Guardar'),
                   ),

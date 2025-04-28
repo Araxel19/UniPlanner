@@ -19,256 +19,125 @@ class SQLiteHelper {
     String path = join(await getDatabasesPath(), 'uniplanner.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5, // Incrementé la versión por los cambios
       onCreate: (db, version) async {
-        // Crear tablas existentes (usuarios, eventos, tareas)
-        await db.execute('''
-        CREATE TABLE users(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT NOT NULL,
-          email TEXT NOT NULL,
-          password TEXT NOT NULL
-        )
-      ''');
-
-        await db.execute('''
-        CREATE TABLE events(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL,
-          date TEXT NOT NULL,
-          startTime TEXT NOT NULL,
-          endTime TEXT NOT NULL,
-          description TEXT NOT NULL,
-          userId INTEGER,
-          FOREIGN KEY (userId) REFERENCES users(id)
-        )
-      ''');
-
-        await db.execute('''
-        CREATE TABLE tasks(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL,
-          dueDate TEXT NOT NULL,
-          dueTime TEXT NOT NULL,
-          description TEXT,
-          isCompleted INTEGER DEFAULT 0,
-          listName TEXT DEFAULT 'Ideas',
-          userId INTEGER,
-          FOREIGN KEY (userId) REFERENCES users(id)
-        )
-      ''');
-
-        // Crear Tabla Finanzas
-        await db.execute('''
-        CREATE TABLE transactions(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          amount REAL NOT NULL,
-          description TEXT NOT NULL,
-          category TEXT NOT NULL,
-          isIncome INTEGER NOT NULL, -- 0 para gasto, 1 para ingreso
-          date TEXT NOT NULL, -- Fecha en formato YYYY-MM-DD
-          time TEXT NOT NULL, -- Hora en formato HH:MM
-          userId INTEGER,
-          FOREIGN KEY (userId) REFERENCES users(id)
-        )
-      ''');
-
-        // Tabla para categorías personalizadas
-        await db.execute('''
-        CREATE TABLE categories(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          iconCode INTEGER NOT NULL, -- Código del icono (Icons.codePoint)
-          isIncome INTEGER NOT NULL, -- 0 para gasto, 1 para ingreso
-          userId INTEGER,
-          FOREIGN KEY (userId) REFERENCES users(id)
-        )
-      ''');
-
-        // Insertar categorías predeterminadas
-        final defaultCategories = [
-          // Gastos (isIncome = 0)
-          {
-            'name': 'Comida',
-            'iconCode': Icons.fastfood.codePoint,
-            'isIncome': 0,
-            'userId': null // Categoría global
-          },
-          {
-            'name': 'Transporte',
-            'iconCode': Icons.directions_car.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Compras',
-            'iconCode': Icons.shopping_cart.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Salud',
-            'iconCode': Icons.health_and_safety.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Entretenimiento',
-            'iconCode': Icons.sports_esports.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Educación',
-            'iconCode': Icons.school.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Hogar',
-            'iconCode': Icons.home.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-          {
-            'name': 'Ropa',
-            'iconCode': Icons.checkroom.codePoint,
-            'isIncome': 0,
-            'userId': null
-          },
-
-          // Ingresos (isIncome = 1)
-          {
-            'name': 'Salario',
-            'iconCode': Icons.work.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-          {
-            'name': 'Ventas',
-            'iconCode': Icons.sell.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-          {
-            'name': 'Inversiones',
-            'iconCode': Icons.trending_up.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-          {
-            'name': 'Regalos',
-            'iconCode': Icons.card_giftcard.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-          {
-            'name': 'Préstamos',
-            'iconCode': Icons.money.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-          {
-            'name': 'Otros ingresos',
-            'iconCode': Icons.attach_money.codePoint,
-            'isIncome': 1,
-            'userId': null
-          },
-        ];
-
-        // Insertar todas las categorías predeterminadas
-        for (var category in defaultCategories) {
-          await db.insert('categories', category);
-        }
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 4) {
-          // Migración a la versión 4 - agregar tablas de finanzas
-          await db.execute('''
-          CREATE TABLE transactions(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount REAL NOT NULL,
-            description TEXT NOT NULL,
-            category TEXT NOT NULL,
-            isIncome INTEGER NOT NULL,
-            date TEXT NOT NULL,
-            time TEXT NOT NULL,
-            userId INTEGER,
-            FOREIGN KEY (userId) REFERENCES users(id)
-          )
-        ''');
-
-          await db.execute('''
-          CREATE TABLE categories(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            iconCode INTEGER NOT NULL,
-            isIncome INTEGER NOT NULL,
-            userId INTEGER,
-            FOREIGN KEY (userId) REFERENCES users(id)
-          )
-        ''');
-
-          // Insertar categorías predeterminadas durante la migración
-          final defaultCategories = [
-            // Gastos
-            {
-              'name': 'Comida',
-              'iconCode': Icons.fastfood.codePoint,
-              'isIncome': 0,
-              'userId': null
-            },
-            {
-              'name': 'Transporte',
-              'iconCode': Icons.directions_car.codePoint,
-              'isIncome': 0,
-              'userId': null
-            },
-            {
-              'name': 'Compras',
-              'iconCode': Icons.shopping_cart.codePoint,
-              'isIncome': 0,
-              'userId': null
-            },
-            {
-              'name': 'Salud',
-              'iconCode': Icons.health_and_safety.codePoint,
-              'isIncome': 0,
-              'userId': null
-            },
-            {
-              'name': 'Entretenimiento',
-              'iconCode': Icons.sports_esports.codePoint,
-              'isIncome': 0,
-              'userId': null
-            },
-            // Ingresos
-            {
-              'name': 'Salario',
-              'iconCode': Icons.work.codePoint,
-              'isIncome': 1,
-              'userId': null
-            },
-            {
-              'name': 'Regalos',
-              'iconCode': Icons.card_giftcard.codePoint,
-              'isIncome': 1,
-              'userId': null
-            },
-            {
-              'name': 'Otros ingresos',
-              'iconCode': Icons.attach_money.codePoint,
-              'isIncome': 1,
-              'userId': null
-            },
-          ];
-
-          for (var category in defaultCategories) {
-            await db.insert('categories', category);
-          }
-        }
+        await _createTables(db);
+        await _insertDefaultCategories(db);
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        email TEXT NOT NULL,
+        password TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        date TEXT NOT NULL,
+        startTime TEXT NOT NULL,
+        endTime TEXT NOT NULL,
+        description TEXT NOT NULL,
+        userId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE tasks(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        dueDate TEXT NOT NULL,
+        dueTime TEXT NOT NULL,
+        description TEXT,
+        isCompleted INTEGER DEFAULT 0,
+        listName TEXT DEFAULT 'Ideas',
+        userId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE transactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        isIncome INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        userId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE categories(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        iconCode INTEGER NOT NULL,
+        isIncome INTEGER NOT NULL,
+        userId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+  }
+
+  Future<void> _insertDefaultCategories(Database db) async {
+    final defaultCategories = [
+      // Gastos (isIncome = 0)
+      _buildCategory('Comida', Icons.restaurant, false),
+      _buildCategory('Transporte', Icons.directions_car, false),
+      _buildCategory('Vivienda', Icons.home, false),
+      _buildCategory('Servicios', Icons.bolt, false),
+      _buildCategory('Salud', Icons.medical_services, false),
+      _buildCategory('Educación', Icons.school, false),
+      _buildCategory('Entretenimiento', Icons.movie, false),
+      _buildCategory('Ropa', Icons.checkroom, false),
+      _buildCategory('Cuidado personal', Icons.spa, false),
+      _buildCategory('Regalos', Icons.card_giftcard, false),
+      _buildCategory('Viajes', Icons.flight, false),
+      _buildCategory('Seguros', Icons.security, false),
+      _buildCategory('Deudas', Icons.money_off, false),
+      _buildCategory('Otros gastos', Icons.miscellaneous_services, false),
+
+      // Ingresos (isIncome = 1)
+      _buildCategory('Salario', Icons.work, true),
+      _buildCategory('Freelance', Icons.computer, true),
+      _buildCategory('Inversiones', Icons.trending_up, true),
+      _buildCategory('Ventas', Icons.sell, true),
+      _buildCategory('Alquileres', Icons.house, true),
+      _buildCategory('Premios', Icons.emoji_events, true),
+      _buildCategory('Becas', Icons.school, true),
+      _buildCategory('Préstamos', Icons.account_balance, true),
+      _buildCategory('Donaciones', Icons.volunteer_activism, true),
+      _buildCategory('Reembolsos', Icons.receipt, true),
+      _buildCategory('Intereses', Icons.account_balance_wallet, true),
+      _buildCategory('Herencia', Icons.account_balance, true),
+      _buildCategory('Otros ingresos', Icons.attach_money, true),
+    ];
+
+    for (var category in defaultCategories) {
+      await db.insert('categories', category,
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  Map<String, dynamic> _buildCategory(
+      String name, IconData icon, bool isIncome) {
+    return {
+      'name': name,
+      'iconCode': icon.codePoint,
+      'isIncome': isIncome ? 1 : 0,
+      'userId': null // Categorías globales
+    };
   }
 
   // Registrar un nuevo usuario
@@ -642,9 +511,8 @@ class SQLiteHelper {
 
     switch (period.toLowerCase()) {
       case 'día':
-        final dateStr = _formatDate(now);
         whereClause += ' AND date = ?';
-        whereArgs.add(dateStr);
+        whereArgs.add(_formatDate(now));
         break;
       case 'semana':
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));

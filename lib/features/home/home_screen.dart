@@ -37,6 +37,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _quoteTimer;
   final SQLiteHelper _dbHelper = SQLiteHelper();
 
+  double _currentBalance = 0;
+  List<Map<String, dynamic>> _recentTransactions = [];
+  bool _isLoadingFinances = true;
+
   final List<Map<String, String>> _backupQuotes = [
     {
       "quote":
@@ -71,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUserAvatar();
     _initializeQuote();
     _loadTodayItems();
+    _loadFinancialData();
   }
 
   @override
@@ -137,6 +142,46 @@ class _HomeScreenState extends State<HomeScreen> {
         ];
         _isLoadingTasks = false;
       });
+    }
+  }
+
+  Future<void> _loadFinancialData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('userId');
+
+    if (userId == null) {
+      setState(() {
+        _isLoadingFinances = false;
+      });
+      return;
+    }
+
+    try {
+      final db = SQLiteHelper();
+
+      // Obtener balance actual
+      final balance = await db.getBalance(userId);
+
+      // Obtener transacciones recientes (últimas 3)
+      final transactions = await db.getTransactionsByPeriod(
+        period: 'Mes',
+        userId: userId,
+        startDate: DateTime.now(),
+      );
+
+      // Filtrar solo las últimas 3 transacciones
+      final recentTransactions = transactions.take(3).toList();
+
+      setState(() {
+        _currentBalance = balance;
+        _recentTransactions = recentTransactions;
+        _isLoadingFinances = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingFinances = false;
+      });
+      debugPrint('Error al cargar datos financieros: $e');
     }
   }
 
@@ -521,6 +566,135 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFinanceItem(Map<String, dynamic> transaction) {
+    final isIncome = transaction['isIncome'] == 1;
+    final amount = transaction['amount'] as double;
+    final theme = Theme.of(context);
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isIncome
+              ? Colors.green.withOpacity(0.2)
+              : Colors.red.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          isIncome ? Icons.arrow_circle_up : Icons.arrow_circle_down,
+          color: isIncome ? Colors.green : Colors.red,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        transaction['category'] ?? 'Sin categoría',
+        style: theme.textTheme.bodyMedium,
+      ),
+      subtitle: Text(
+        transaction['description'] ?? 'Sin descripción',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Text(
+        '${isIncome ? '+' : '-'}\$${amount.toStringAsFixed(2)}',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: isIncome ? Colors.green : Colors.red,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinanceSection() {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 400), // Reducido
+      padding: const EdgeInsets.all(12.0), // Menos padding
+      margin: const EdgeInsets.only(bottom: 16.0),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16.0), // Radio más pequeño
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Saldo Disponible: ',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '\$${_currentBalance.toStringAsFixed(2)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: _currentBalance >= 0 ? Colors.green : Colors.red,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _isLoadingFinances
+              ? const Center(child: CircularProgressIndicator())
+              : _recentTransactions.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'No hay transacciones recientes',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Últimas transacciones:',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.textTheme.bodySmall?.color
+                                ?.withOpacity(0.7),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 100, // Espacio limitado para el scroll
+                          child: SingleChildScrollView(
+                            child: Column(
+                              children: _recentTransactions
+                                  .take(3)
+                                  .map((transaction) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: _buildFinanceItem(transaction),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                Navigator.pushNamed(context, AppRoutes.finanzas);
+              },
+              child: const Text('Ver todas las finanzas'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -531,7 +705,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header con nombre y menú
+            // Header con nombre y menú (se mantiene igual)
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
@@ -582,7 +756,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   children: [
-                    // Frase motivacional
+                    // Frase motivacional (se mantiene igual)
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 500),
                       child: Container(
@@ -626,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    // Sección "Hoy"
+                    // Sección "Hoy" (se mantiene igual)
                     Container(
                       width: double.infinity,
                       constraints: const BoxConstraints(maxWidth: 600),
@@ -670,7 +844,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     )
                                   : ConstrainedBox(
                                       constraints: BoxConstraints(
-                                        maxHeight: 250,
+                                        maxHeight: 150,
                                       ),
                                       child: Scrollbar(
                                         child: ListView.separated(
@@ -691,10 +865,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    BalanceCard(
-                      balance: '300.000',
-                      expenses: expenses,
-                    ),
+                    // Nueva sección de finanzas (después de pendientes)
+                    _buildFinanceSection(),
                   ],
                 ),
               ),
@@ -707,3 +879,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+// Fin de la clase HomeScreen
