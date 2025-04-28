@@ -88,6 +88,28 @@ class SQLiteHelper {
         FOREIGN KEY (userId) REFERENCES users(id)
       )
     ''');
+    await db.execute('''
+  CREATE TABLE courses(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    label TEXT,
+    userId INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id)
+  )
+''');
+
+    await db.execute('''
+  CREATE TABLE grades(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    courseId INTEGER NOT NULL,
+    type TEXT NOT NULL, -- 'homework', 'self_eval', 'partial', 'final'
+    period INTEGER NOT NULL, -- 1, 2, 3
+    value REAL NOT NULL,
+    weight REAL NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (courseId) REFERENCES courses(id)
+  )
+''');
   }
 
   Future<void> _insertDefaultCategories(Database db) async {
@@ -110,6 +132,7 @@ class SQLiteHelper {
 
       // Ingresos (isIncome = 1)
       _buildCategory('Salario', Icons.work, true),
+      _buildCategory('Regalo', Icons.card_giftcard, true),
       _buildCategory('Freelance', Icons.computer, true),
       _buildCategory('Inversiones', Icons.trending_up, true),
       _buildCategory('Ventas', Icons.sell, true),
@@ -694,5 +717,183 @@ class SQLiteHelper {
 
   String _formatTime(DateTime date) {
     return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  // Métodos para cursos
+  Future<int> addCourse(String name, String label, int userId) async {
+    final db = await database;
+    return await db.insert('courses', {
+      'name': name,
+      'label': label,
+      'userId': userId,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getUserCourses(int userId) async {
+    final db = await database;
+    return await db.query(
+      'courses',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'name ASC',
+    );
+  }
+
+  Future<int> updateCourse(int id, String name, String label) async {
+    final db = await database;
+    return await db.update(
+      'courses',
+      {
+        'name': name,
+        'label': label,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteCourse(int id) async {
+    final db = await database;
+    await db.delete(
+      'grades',
+      where: 'courseId = ?',
+      whereArgs: [id],
+    );
+    return await db.delete(
+      'courses',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+// Métodos para notas
+  Future<int> addGrade({
+    required int courseId,
+    required String type,
+    required int period,
+    required double value,
+    required double weight,
+  }) async {
+    final db = await database;
+    return await db.insert('grades', {
+      'courseId': courseId,
+      'type': type,
+      'period': period,
+      'value': value,
+      'weight': weight,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getCourseGrades(int courseId) async {
+    final db = await database;
+    return await db.query(
+      'grades',
+      where: 'courseId = ?',
+      whereArgs: [courseId],
+      orderBy: 'period ASC, type ASC',
+    );
+  }
+
+  Future<int> updateGrade({
+    required int id,
+    required double value,
+    required double weight,
+  }) async {
+    final db = await database;
+    return await db.update(
+      'grades',
+      {
+        'value': value,
+        'weight': weight,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteGrade(int id) async {
+    final db = await database;
+    return await db.delete(
+      'grades',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+// Método para calcular el promedio de un curso
+  Future<Map<String, dynamic>> calculateCourseAverage(int courseId) async {
+    final db = await database;
+    final grades = await db.query(
+      'grades',
+      where: 'courseId = ?',
+      whereArgs: [courseId],
+    );
+
+    // Organizar las notas por periodo
+    final Map<int, Map<String, List<double>>> periodGrades = {};
+
+    for (var grade in grades) {
+      final period = grade['period'] as int;
+      final type = grade['type'] as String;
+      final value = grade['value'] as double;
+      final weight = grade['weight'] as double;
+
+      if (!periodGrades.containsKey(period)) {
+        periodGrades[period] = {
+          'homework': [],
+          'self_eval': [],
+          'partial': [],
+        };
+      }
+
+      if (type == 'homework' || type == 'self_eval' || type == 'partial') {
+        periodGrades[period]![type]!.add(value * weight);
+      }
+    }
+
+    // Calcular promedio por periodo
+    final Map<int, double> periodAverages = {};
+    for (var period in periodGrades.keys) {
+      final periodData = periodGrades[period]!;
+
+      // Calcular promedio de tareas (30%)
+      final homeworkAvg = periodData['homework']!.isEmpty
+          ? 0
+          : (periodData['homework']!.reduce((a, b) => a + b) /
+              periodData['homework']!.length);
+
+      // Autoevaluación (10%)
+      final selfEvalAvg =
+          periodData['self_eval']!.isEmpty ? 0 : periodData['self_eval']!.first;
+
+      // Parcial (60%)
+      final partialAvg =
+          periodData['partial']!.isEmpty ? 0 : periodData['partial']!.first;
+
+      // Promedio del periodo
+      periodAverages[period] =
+          homeworkAvg * 0.3 + selfEvalAvg * 0.1 + partialAvg * 0.6;
+    }
+
+    // Calcular promedio final (33%, 33%, 34%)
+    double finalAverage = 0;
+    if (periodAverages.containsKey(1))
+      finalAverage += periodAverages[1]! * 0.33;
+    if (periodAverages.containsKey(2))
+      finalAverage += periodAverages[2]! * 0.33;
+    if (periodAverages.containsKey(3))
+      finalAverage += periodAverages[3]! * 0.34;
+
+    // Buscar si existe nota final manual
+    final finalGrade = grades.firstWhere(
+      (g) => g['type'] == 'final',
+      orElse: () => {'value': finalAverage},
+    );
+
+    return {
+      'periodAverages': periodAverages,
+      'finalAverage': finalGrade['value'] as double,
+    };
   }
 }

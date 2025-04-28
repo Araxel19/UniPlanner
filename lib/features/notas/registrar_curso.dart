@@ -1,8 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/db/sqlite_helper.dart';
 import '../../shared_widgets/general/app_routes.dart';
 
-class RegistrarCurso extends StatelessWidget {
+class RegistrarCurso extends StatefulWidget {
   const RegistrarCurso({Key? key}) : super(key: key);
+
+  @override
+  _RegistrarCursoState createState() => _RegistrarCursoState();
+}
+
+class _RegistrarCursoState extends State<RegistrarCurso> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _labelController = TextEditingController();
+  final SQLiteHelper _dbHelper = SQLiteHelper();
+  int? _userId;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    if (userEmail != null) {
+      final user = await _dbHelper.getUserByEmail(userEmail);
+      if (user != null) {
+        setState(() {
+          _userId = user['id'] as int;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveCourse() async {
+    if (_formKey.currentState!.validate() && _userId != null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        await _dbHelper.addCourse(
+          _nameController.text,
+          _labelController.text,
+          _userId!,
+        );
+
+        if (!mounted) return;
+        Navigator.pop(context);
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _labelController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,13 +86,16 @@ class RegistrarCurso extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(isDarkMode),
-                    _buildForm(isDarkMode),
-                    const SizedBox(height: 40),
-                  ],
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(isDarkMode),
+                      _buildForm(isDarkMode),
+                      const SizedBox(height: 40),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -62,7 +128,7 @@ class RegistrarCurso extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Materia',
+          'Nombre del curso',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w500,
@@ -71,11 +137,61 @@ class RegistrarCurso extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         TextFormField(
+          controller: _nameController,
           style: TextStyle(
             color: isDarkMode ? Colors.white : Colors.black,
           ),
           decoration: InputDecoration(
-            hintText: 'Ingrese su materia',
+            hintText: 'Ej: Cálculo Multivariable',
+            hintStyle: TextStyle(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+            filled: isDarkMode,
+            fillColor: isDarkMode ? Colors.grey[800] : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: isDarkMode ? Colors.grey[400]! : Colors.grey[500]!,
+                width: 2,
+              ),
+            ),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor ingresa el nombre del curso';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 32),
+        Text(
+          'Etiqueta (opcional)',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: isDarkMode ? Colors.white : Colors.black,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _labelController,
+          style: TextStyle(
+            color: isDarkMode ? Colors.white : Colors.black,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Ej: Matemáticas, Ciencias, etc.',
             hintStyle: TextStyle(
               color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
             ),
@@ -102,56 +218,33 @@ class RegistrarCurso extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 32),
-        Text(
-          'Etiquetas',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: isDarkMode ? Colors.white : Colors.black,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            border: Border.all(
-                color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(12),
-            color: isDarkMode ? Colors.grey[800] : null,
-          ),
-          child: Text(
-            'May after! 😊',
-            style: TextStyle(
-              fontSize: 16,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
-          ),
-        ),
         const SizedBox(height: 40),
         Center(
-          child: TextButton.icon(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
-              backgroundColor:
-                  isDarkMode ? Colors.grey[700] : const Color(0xFFECE6F0),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-            ),
-            icon: Icon(Icons.add,
-                color: isDarkMode ? Colors.white : Colors.black),
-            label: Text(
-              'Crear',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: isDarkMode ? Colors.white : Colors.black,
-              ),
-            ),
-          ),
+          child: _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton.icon(
+                  onPressed: _saveCourse,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 32),
+                    backgroundColor: isDarkMode
+                        ? Colors.blueAccent
+                        : const Color(0xFF1A73E8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                  icon: Icon(Icons.save,
+                      color: isDarkMode ? Colors.white : Colors.white),
+                  label: Text(
+                    'Guardar Curso',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
         ),
       ],
     );

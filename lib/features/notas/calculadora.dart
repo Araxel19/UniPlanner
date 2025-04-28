@@ -1,12 +1,48 @@
 import 'package:flutter/material.dart';
-import '../../shared_widgets/notas/course_list_item.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
-import 'registrar_curso.dart';
-import 'EditarCurso.dart'; // Importa el archivo EditarCurso.dart
-import 'RegistrarNotas.dart'; // Importa el archivo RegistrarNotas.dart
+import '../../core/db/sqlite_helper.dart';
+import '../../shared_widgets/general/app_routes.dart';
 
-class Calculadora extends StatelessWidget {
+class Calculadora extends StatefulWidget {
   const Calculadora({Key? key}) : super(key: key);
+
+  @override
+  _CalculadoraState createState() => _CalculadoraState();
+}
+
+class _CalculadoraState extends State<Calculadora> {
+  final SQLiteHelper _dbHelper = SQLiteHelper();
+  List<Map<String, dynamic>> _courses = [];
+  int? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    if (userEmail != null) {
+      final user = await _dbHelper.getUserByEmail(userEmail);
+      if (user != null) {
+        setState(() {
+          _userId = user['id'] as int;
+        });
+        _loadCourses();
+      }
+    }
+  }
+
+  Future<void> _loadCourses() async {
+    if (_userId == null) return;
+    final courses = await _dbHelper.getUserCourses(_userId!);
+    setState(() {
+      _courses = courses;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +54,6 @@ class Calculadora extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Contenido principal con scroll
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -38,17 +73,17 @@ class Calculadora extends StatelessWidget {
                       const SizedBox(height: 24),
                       _buildCourseList(theme, isDarkMode, context),
                       const SizedBox(height: 24),
-                      // Botón para agregar curso
                       Align(
                         alignment: Alignment.centerRight,
                         child: FloatingActionButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const RegistrarCurso(),
-                              ),
+                          onPressed: () async {
+                            await Navigator.pushNamed(
+                              context, 
+                              AppRoutes.registrarCurso
                             );
+                            if (_userId != null) {
+                              await _loadCourses();
+                            }
                           },
                           backgroundColor: isDarkMode
                               ? theme.colorScheme.primaryContainer
@@ -69,7 +104,6 @@ class Calculadora extends StatelessWidget {
                 ),
               ),
             ),
-            // Barra de navegación inferior
             const BottomNavigation(),
           ],
         ),
@@ -77,163 +111,78 @@ class Calculadora extends StatelessWidget {
     );
   }
 
-  Widget _buildCourseList(
-      ThemeData theme, bool isDarkMode, BuildContext context) {
+  Widget _buildCourseList(ThemeData theme, bool isDarkMode, BuildContext context) {
+    if (_courses.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'No tienes cursos registrados',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: [
-        _CustomCourseListItem(
-          courseName: 'Inglés 2',
-          subtitle: '3.5',
-          theme: theme,
-          isDarkMode: isDarkMode,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const EditarCurso(), // Navega a EditarCurso
+        for (var course in _courses)
+          Column(
+            children: [
+              ListTile(
+                leading: Icon(
+                  Icons.school,
+                  size: 32,
+                  color: isDarkMode ? Colors.white : Colors.blueAccent,
+                ),
+                title: Text(
+                  course['name'] as String,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isDarkMode ? Colors.white : Colors.black,
+                  ),
+                ),
+                subtitle: Text(
+                  'Ver notas',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                trailing: IconButton(
+                  icon: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  onPressed: () {
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.registrarNotas,
+                      arguments: {
+                        'courseId': course['id'],
+                        'courseName': course['name'],
+                      },
+                    );
+                  },
+                ),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.editarCurso,
+                    arguments: {
+                      'courseId': course['id'],
+                      'courseName': course['name'],
+                      'courseLabel': course['label'] ?? '',
+                    },
+                  ).then((_) => _loadCourses());
+                },
               ),
-            );
-          },
-          onArrowPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const RegistrarNotas(), // Navega a RegistrarNotas
-              ),
-            );
-          },
-        ),
-        const Divider(height: 1),
-        _CustomCourseListItem(
-          courseName: 'Cálculo Multivariable',
-          subtitle: '4.6',
-          theme: theme,
-          isDarkMode: isDarkMode,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const EditarCurso(), // Navega a EditarCurso
-              ),
-            );
-          },
-          onArrowPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const RegistrarNotas(), // Navega a RegistrarNotas
-              ),
-            );
-          },
-        ),
-        const Divider(height: 1),
-        _CustomCourseListItem(
-          courseName: 'Cloud Computing',
-          subtitle: '4.9',
-          theme: theme,
-          isDarkMode: isDarkMode,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const EditarCurso(), // Navega a EditarCurso
-              ),
-            );
-          },
-          onArrowPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const RegistrarNotas(), // Navega a RegistrarNotas
-              ),
-            );
-          },
-        ),
-        const Divider(height: 1),
-        _CustomCourseListItem(
-          courseName: 'Programación en JAVA',
-          subtitle: '5.0',
-          theme: theme,
-          isDarkMode: isDarkMode,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const EditarCurso(), // Navega a EditarCurso
-              ),
-            );
-          },
-          onArrowPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    const RegistrarNotas(), // Navega a RegistrarNotas
-              ),
-            );
-          },
-        ),
+              const Divider(height: 1),
+            ],
+          ),
       ],
-    );
-  }
-}
-
-/// Widget personalizado para mostrar un curso con un ícono de carpeta
-class _CustomCourseListItem extends StatelessWidget {
-  final String courseName;
-  final String subtitle;
-  final ThemeData theme;
-  final bool isDarkMode;
-  final VoidCallback onTap;
-  final VoidCallback onArrowPressed;
-
-  const _CustomCourseListItem({
-    Key? key,
-    required this.courseName,
-    required this.subtitle,
-    required this.theme,
-    required this.isDarkMode,
-    required this.onTap,
-    required this.onArrowPressed,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        Icons.folder, // Ícono de carpeta
-        size: 32,
-        color: isDarkMode ? Colors.white : Colors.blueAccent,
-      ),
-      title: Text(
-        courseName,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: isDarkMode ? Colors.white : Colors.black,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-        ),
-      ),
-      trailing: InkWell(
-        onTap: onArrowPressed, // Acción al presionar la flecha
-        child: Icon(
-          Icons.arrow_forward_ios,
-          size: 16,
-          color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-        ),
-      ),
-      onTap: onTap, // Acción al presionar el resto del ListTile
     );
   }
 }

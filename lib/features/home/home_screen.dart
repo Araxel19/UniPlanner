@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 import '../../shared_widgets/general/app_routes.dart';
 import '../../core/db/sqlite_helper.dart';
-import 'balance_card.dart';
 import 'dart:math';
 import 'dart:async';
 

@@ -13,6 +13,8 @@ import '../../features/finanzas/finanzas_screen.dart';
 import '../../features/finanzas/agregar_movimientos.dart';
 import '../../features/notas/calculadora.dart';
 import '../../features/notas/registrar_curso.dart';
+import '../../features/notas/EditarCurso.dart';
+import '../../features/notas/RegistrarNotas.dart';
 import '../../features/recordatorios/recordatorios_screen.dart';
 import '../../features/recordatorios/edit_event_screen.dart';
 import '../../features/recordatorios/edit_task_screen.dart';
@@ -39,6 +41,8 @@ class AppRoutes {
   // Notas
   static const String calculadora = '/calculadora';
   static const String registrarCurso = '/registrar_curso';
+  static const String editarCurso = '/editar_curso';
+  static const String registrarNotas = '/registrar_notas';
 
   //Recordatorios
   static const String recordatorios = '/recordatorios';
@@ -112,6 +116,37 @@ class AppRoutes {
         // Notas
         calculadora: (context) => const Calculadora(),
         registrarCurso: (context) => const RegistrarCurso(),
+        editarCurso: (context) {
+          final args = ModalRoute.of(context)?.settings.arguments
+              as Map<String, dynamic>?;
+          if (args == null ||
+              args['courseId'] == null ||
+              args['courseName'] == null) {
+            Navigator.pop(context);
+            return const Center(
+                child: Text('Error: Datos del curso requeridos'));
+          }
+          return EditarCurso(
+            courseId: args['courseId'] as int,
+            courseName: args['courseName'] as String,
+            courseLabel: args['courseLabel'] as String? ?? '',
+          );
+        },
+        registrarNotas: (context) {
+          final args = ModalRoute.of(context)?.settings.arguments
+              as Map<String, dynamic>?;
+          if (args == null ||
+              args['courseId'] == null ||
+              args['courseName'] == null) {
+            Navigator.pop(context);
+            return const Center(
+                child: Text('Error: Datos del curso requeridos'));
+          }
+          return RegistrarNotas(
+            courseId: args['courseId'] as int,
+            courseName: args['courseName'] as String,
+          );
+        },
 
         // Recordatorios
         recordatorios: (context) => const RecordatoriosScreen(),
