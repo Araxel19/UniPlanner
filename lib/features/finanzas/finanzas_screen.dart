@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../core/db/sqlite_helper.dart';
 import 'agregar_movimientos.dart';
 import 'transaction_details_screen.dart';
+import '../../shared_widgets/general/bottom_navigation.dart';
+import '../../shared_widgets/general/app_routes.dart';
 
 class FinanzasScreen extends StatefulWidget {
   const FinanzasScreen({Key? key}) : super(key: key);
@@ -250,34 +252,10 @@ class _FinanzasScreenState extends State<FinanzasScreen> {
                 },
               ),
             ),
-            // Barra de navegación inferior
-            NavigationBar(
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.home),
-                  label: 'Inicio',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.credit_card),
-                  label: 'Tarjetas',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.bar_chart),
-                  label: 'Estadísticas',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.settings),
-                  label: 'Ajustes',
-                ),
-              ],
-              selectedIndex: 0,
-              onDestinationSelected: (index) {
-                // Navegar a otras pantallas según el índice
-              },
-            ),
           ],
         ),
       ),
+      bottomNavigationBar: const BottomNavigation(),
     );
   }
 
