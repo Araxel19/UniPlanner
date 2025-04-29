@@ -117,19 +117,36 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Reemplazar el método _loadUserAvatar existente con este:
   Future<void> _loadUserAvatar() async {
-    final prefs = await SharedPreferences.getInstance();
-    final emoji = prefs.getString('selectedEmoji');
-    final imagePath = prefs.getString('userImage');
-    final userId = prefs.getInt('userId');
+    if (_currentUserId == null) return;
 
-    if (imagePath != null && File(imagePath).existsSync()) {
+    try {
+      final avatar = await _dbHelper.getUserAvatar(_currentUserId!);
+
+      if (avatar == null) {
+        // Si no hay avatar en la base de datos, usar valores por defecto
+        setState(() {
+          _selectedEmoji = '👤';
+          _userImage = null;
+        });
+        return;
+      }
+
       setState(() {
-        _userImage = File(imagePath);
+        _selectedEmoji = avatar['emoji'] ?? '👤';
+        final imagePath = avatar['imagePath'];
+        if (imagePath != null && File(imagePath).existsSync()) {
+          _userImage = File(imagePath);
+        } else {
+          _userImage = null;
+        }
       });
-    } else if (emoji != null) {
+    } catch (e) {
+      debugPrint('Error al cargar avatar: $e');
       setState(() {
-        _selectedEmoji = emoji;
+        _selectedEmoji = '👤';
+        _userImage = null;
       });
     }
   }

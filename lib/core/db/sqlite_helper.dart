@@ -38,6 +38,15 @@ class SQLiteHelper {
     ''');
 
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS user_avatars (
+        userId INTEGER PRIMARY KEY,
+        emoji TEXT,
+        imagePath TEXT,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE events(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -203,6 +212,53 @@ class SQLiteHelper {
       'users',
       where: 'email = ?',
       whereArgs: [email],
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  /// Guardar avatar (emoji o imagen) para un usuario
+  Future<void> saveUserAvatar({
+    required int userId,
+    String? emoji,
+    String? imagePath,
+  }) async {
+    final db = await database;
+
+    // Primero verificar si ya existe un registro
+    final existing = await db.query(
+      'user_avatars',
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+
+    if (existing.isEmpty) {
+      // Insertar nuevo registro
+      await db.insert('user_avatars', {
+        'userId': userId,
+        'emoji': emoji,
+        'imagePath': imagePath,
+      });
+    } else {
+      // Actualizar registro existente
+      await db.update(
+        'user_avatars',
+        {
+          'emoji': emoji,
+          'imagePath': imagePath,
+        },
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+    }
+  }
+
+  /// Obtener avatar de un usuario
+  Future<Map<String, dynamic>?> getUserAvatar(int userId) async {
+    final db = await database;
+    final result = await db.query(
+      'user_avatars',
+      where: 'userId = ?',
+      whereArgs: [userId],
     );
     return result.isNotEmpty ? result.first : null;
   }

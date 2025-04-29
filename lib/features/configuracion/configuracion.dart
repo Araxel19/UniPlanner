@@ -19,8 +19,10 @@ class ConfiguracionScreen extends StatefulWidget {
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   String _userName = '';
   File? _userImage;
-  String _selectedEmoji = '👤'; // Emoji por defecto
+  String _selectedEmoji = '👤';
+  int? _userId;
   final ImagePicker _picker = ImagePicker();
+  final SQLiteHelper _dbHelper = SQLiteHelper();
 
   final List<String> predefinedAvatars = [
     '😀',
@@ -44,58 +46,67 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserName();
-    _loadUserImage();
-    _loadSelectedEmoji();
+    _loadUserData();
   }
 
-  Future<void> _loadUserName() async {
+  Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userName = prefs.getString('username') ?? 'username';
+      _userId = prefs.getInt('userId');
     });
-  }
 
-  Future<void> _loadUserImage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final imagePath = prefs.getString('userImage');
-    if (imagePath != null && File(imagePath).existsSync()) {
-      setState(() {
-        _userImage = File(imagePath);
-      });
+    if (_userId != null) {
+      await _loadUserAvatar();
     }
   }
 
-  Future<void> _loadSelectedEmoji() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadUserAvatar() async {
+    if (_userId == null) return;
+
+    final avatar = await _dbHelper.getUserAvatar(_userId!);
+    if (avatar == null) return;
+
     setState(() {
-      _selectedEmoji = prefs.getString('selectedEmoji') ?? '👤';
+      _selectedEmoji = avatar['emoji'] ?? '👤';
+      final imagePath = avatar['imagePath'];
+      if (imagePath != null && File(imagePath).existsSync()) {
+        _userImage = File(imagePath);
+      }
     });
   }
 
   Future<void> _pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
+    if (pickedFile != null && _userId != null) {
       await _saveImage(pickedFile.path);
-      // Limpiar emoji seleccionado cuando se elige una imagen
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('selectedEmoji');
     }
   }
 
   Future<void> _saveImage(String imagePath) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userImage', imagePath);
+    if (_userId == null) return;
+
+    await _dbHelper.saveUserAvatar(
+      userId: _userId!,
+      imagePath: imagePath,
+      emoji: null, // Limpiar emoji al guardar imagen
+    );
+
     setState(() {
       _userImage = File(imagePath);
+      _selectedEmoji = '👤';
     });
   }
 
   Future<void> _saveSelectedEmoji(String emoji) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selectedEmoji', emoji);
-    // Limpiar imagen cuando se elige un emoji
-    await prefs.remove('userImage');
+    if (_userId == null) return;
+
+    await _dbHelper.saveUserAvatar(
+      userId: _userId!,
+      emoji: emoji,
+      imagePath: null, // Limpiar imagen al guardar emoji
+    );
+
     setState(() {
       _selectedEmoji = emoji;
       _userImage = null;

@@ -78,9 +78,7 @@ class _CalculadoraState extends State<Calculadora> {
                         child: FloatingActionButton(
                           onPressed: () async {
                             await Navigator.pushNamed(
-                              context, 
-                              AppRoutes.registrarCurso
-                            );
+                                context, AppRoutes.registrarCurso);
                             if (_userId != null) {
                               await _loadCourses();
                             }
@@ -111,7 +109,8 @@ class _CalculadoraState extends State<Calculadora> {
     );
   }
 
-  Widget _buildCourseList(ThemeData theme, bool isDarkMode, BuildContext context) {
+  Widget _buildCourseList(
+      ThemeData theme, bool isDarkMode, BuildContext context) {
     if (_courses.isEmpty) {
       return Center(
         child: Padding(
@@ -167,8 +166,8 @@ class _CalculadoraState extends State<Calculadora> {
                     );
                   },
                 ),
-                onTap: () {
-                  Navigator.pushNamed(
+                onTap: () async {
+                  final shouldRefresh = await Navigator.pushNamed(
                     context,
                     AppRoutes.editarCurso,
                     arguments: {
@@ -176,7 +175,11 @@ class _CalculadoraState extends State<Calculadora> {
                       'courseName': course['name'],
                       'courseLabel': course['label'] ?? '',
                     },
-                  ).then((_) => _loadCourses());
+                  );
+
+                  if (shouldRefresh == true) {
+                    await _loadCourses();
+                  }
                 },
               ),
               const Divider(height: 1),

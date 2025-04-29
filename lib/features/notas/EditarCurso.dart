@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/db/sqlite_helper.dart';
 
 class EditarCurso extends StatefulWidget {
   final int courseId;
@@ -19,6 +20,8 @@ class EditarCurso extends StatefulWidget {
 class EditarCursoState extends State<EditarCurso> {
   final _nameController = TextEditingController();
   final _labelController = TextEditingController();
+  final SQLiteHelper _dbHelper = SQLiteHelper();
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -34,6 +37,82 @@ class EditarCursoState extends State<EditarCurso> {
     super.dispose();
   }
 
+  Future<void> _saveChanges() async {
+    if (_nameController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('El nombre del curso es requerido')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _dbHelper.updateCourse(
+        widget.courseId,
+        _nameController.text,
+        _labelController.text,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context, true); // Retornar true para indicar éxito
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar: ${e.toString()}')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar eliminación'),
+        content: const Text('¿Estás seguro de que quieres eliminar este curso? Todas las notas asociadas también se eliminarán.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        await _dbHelper.deleteCourse(widget.courseId);
+        if (!mounted) return;
+        Navigator.pop(context, true); // Retornar true para indicar éxito
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al eliminar: ${e.toString()}')),
+        );
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -47,37 +126,46 @@ class EditarCursoState extends State<EditarCurso> {
         ),
         title: const Text('Editar Curso'),
         backgroundColor: isDarkMode ? theme.primaryColor : Colors.blueAccent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _confirmDelete,
+            color: Colors.red,
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Nombre del curso',
-                border: OutlineInputBorder(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre del curso',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _labelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Etiqueta (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _saveChanges,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                    child: const Text('Guardar cambios'),
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _labelController,
-              decoration: InputDecoration(
-                labelText: 'Etiqueta (opcional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                // Aquí deberías implementar la lógica para guardar los cambios
-                Navigator.pop(context);
-              },
-              child: Text('Guardar cambios'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
