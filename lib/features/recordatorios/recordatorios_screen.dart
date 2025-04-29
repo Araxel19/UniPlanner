@@ -18,40 +18,39 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   List<String> _lists = ['Hoy', 'Ideas'];
   String _selectedList = 'Ideas';
   Map<String, bool> _completedTasksVisibility = {};
-  late Future<SharedPreferences> _prefsFuture;
   bool _showCompletedTasks = false;
 
   @override
   void initState() {
     super.initState();
-    _prefsFuture = SharedPreferences.getInstance();
     _loadUserId();
-    _loadLists();
-  }
-
-  Future<void> _loadLists() async {
-    final prefs = await _prefsFuture;
-    final savedLists = prefs.getStringList('taskLists') ?? [];
-
-    setState(() {
-      // Combinar listas básicas con las guardadas, eliminando duplicados
-      _lists = ['Hoy', 'Ideas']
-        ..addAll(savedLists.where((list) => !['Hoy', 'Ideas'].contains(list)));
-
-      for (var list in _lists) {
-        _completedTasksVisibility[list] = false;
-      }
-
-      // Guardar la lista combinada para futuras cargas
-      prefs.setStringList('taskLists',
-          _lists.where((l) => l != 'Hoy' && l != 'Ideas').toList());
-    });
   }
 
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('userId');
+
+    if (userId == null) return;
+
     setState(() {
-      _userId = prefs.getInt('userId');
+      _userId = userId;
+    });
+
+    _loadLists();
+  }
+
+  Future<void> _loadLists() async {
+    if (_userId == null) return;
+
+    final userLists = await _dbHelper.getUserTaskLists(_userId!);
+
+    setState(() {
+      _lists = ['Hoy', 'Ideas']..addAll(userLists);
+
+      // Inicializar visibilidad de tareas completadas
+      for (var list in _lists) {
+        _completedTasksVisibility[list] = false;
+      }
     });
   }
 
@@ -113,15 +112,20 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                if (controller.text.isNotEmpty) {
-                  final prefs = await _prefsFuture;
-                  setState(() {
-                    _lists.add(controller.text);
-                    _completedTasksVisibility[controller.text] = false;
-                    _selectedList = controller.text;
-                    prefs.setStringList('taskLists', _lists);
-                  });
-                  Navigator.pop(context);
+                if (controller.text.isNotEmpty && _userId != null) {
+                  try {
+                    await _dbHelper.addTaskList(controller.text, _userId!);
+                    setState(() {
+                      _lists.add(controller.text);
+                      _completedTasksVisibility[controller.text] = false;
+                      _selectedList = controller.text;
+                    });
+                    Navigator.pop(context);
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error al crear lista: $e')),
+                    );
+                  }
                 }
               },
               child: const Text('Crear'),
@@ -155,9 +159,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (controller.text.isNotEmpty &&
-                    controller.text != currentName) {
+                    controller.text != currentName &&
+                    _userId != null) {
                   try {
-                    final prefs = await _prefsFuture;
                     await _dbHelper.renameTaskList(
                         currentName, controller.text, _userId!);
                     setState(() {
@@ -167,7 +171,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                       _completedTasksVisibility[controller.text] =
                           _completedTasksVisibility[currentName] ?? false;
                       _completedTasksVisibility.remove(currentName);
-                      prefs.setStringList('taskLists', _lists);
                     });
                     Navigator.pop(context);
                   } catch (e) {
@@ -186,7 +189,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   }
 
   Future<void> _deleteList(String listName) async {
-    if (listName == 'Ideas' || listName == 'Hoy') {
+    if (listName == 'Ideas' || listName == 'Hoy' || _userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No se puede eliminar esta lista'),
@@ -195,7 +198,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       return;
     }
 
-    final isEmpty = await _dbHelper.isListEmpty(listName, _userId!);
+    final isEmpty = await _dbHelper.isTaskListEmpty(listName, _userId!);
     if (!isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -205,17 +208,20 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       return;
     }
 
-    final prefs = await _prefsFuture;
-    setState(() {
-      _lists.remove(listName);
-      _completedTasksVisibility.remove(listName);
-      if (_selectedList == listName) {
-        _selectedList = 'Ideas';
-      }
-      // Actualizar SharedPreferences
-      prefs.setStringList(
-          'taskLists', _lists.where((l) => l != listName).toList());
-    });
+    try {
+      await _dbHelper.deleteTaskList(listName, _userId!);
+      setState(() {
+        _lists.remove(listName);
+        _completedTasksVisibility.remove(listName);
+        if (_selectedList == listName) {
+          _selectedList = 'Ideas';
+        }
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar lista: $e')),
+      );
+    }
   }
 
   @override

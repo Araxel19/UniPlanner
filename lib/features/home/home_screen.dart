@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _currentBalance = 0;
   List<Map<String, dynamic>> _recentTransactions = [];
   bool _isLoadingFinances = true;
+  int? _currentUserId;
 
   final List<Map<String, String>> _backupQuotes = [
     {
@@ -70,17 +71,40 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserName();
-    _loadUserAvatar();
-    _initializeQuote();
-    _loadTodayItems();
-    _loadFinancialData();
+    _loadUserData();
   }
 
   @override
   void dispose() {
     _quoteTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Cargar ID del usuario
+    final userId = prefs.getInt('userId');
+    if (userId == null) {
+      // Si no hay usuario logueado, redirigir al login
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacementNamed(context, AppRoutes.login);
+      });
+      return;
+    }
+
+    setState(() {
+      _currentUserId = userId;
+    });
+
+    // Cargar nombre y avatar
+    await _loadUserName();
+    await _loadUserAvatar();
+
+    // Cargar datos específicos del usuario
+    await _loadTodayItems();
+    await _loadFinancialData();
+    _initializeQuote();
   }
 
   Future<void> _loadUserName() async {
@@ -111,19 +135,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadTodayItems() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('userId');
-
-    if (userId == null) return;
+    if (_currentUserId == null) return;
 
     final now = DateTime.now();
     final formattedDate = DateFormat('yyyy-MM-dd').format(now);
 
     try {
-      final items = await _dbHelper.getDayItems(formattedDate);
+      // Obtener eventos del usuario
+      final userEvents = await _dbHelper.getEventsForDay(formattedDate,
+          userId: _currentUserId);
+
+      // Obtener tareas del usuario
+      final userTasks =
+          await _dbHelper.getTasksForDay(formattedDate, userId: _currentUserId);
+
+      // Combinar y formatear los resultados
+      final combinedItems = [
+        ...userTasks.map((e) => {...e, 'type': 'task'}),
+        ...userEvents.map((e) => {...e, 'type': 'event'}),
+      ];
 
       // Filtrar tareas completadas
-      final filteredItems = items.where((item) {
+      final filteredItems = combinedItems.where((item) {
         if (item['type'] == 'task') {
           return item['isCompleted'] != 1; // Mostrar solo tareas no completadas
         }
@@ -145,10 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadFinancialData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('userId');
-
-    if (userId == null) {
+    if (_currentUserId == null) {
       setState(() {
         _isLoadingFinances = false;
       });
@@ -156,15 +186,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final db = SQLiteHelper();
+      // Obtener balance actual del usuario
+      final balance = await _dbHelper.getBalance(_currentUserId!);
 
-      // Obtener balance actual
-      final balance = await db.getBalance(userId);
-
-      // Obtener transacciones recientes (últimas 3)
-      final transactions = await db.getTransactionsByPeriod(
+      // Obtener transacciones recientes del usuario (últimas 3)
+      final transactions = await _dbHelper.getTransactionsByPeriod(
         period: 'Mes',
-        userId: userId,
+        userId: _currentUserId!,
         startDate: DateTime.now(),
       );
 

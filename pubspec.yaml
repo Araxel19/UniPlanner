@@ -34,6 +34,7 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  generate: true
   assets:
     - assets/images/logo.jpg
     - assets/images/back_icon.png
@@ -51,3 +52,8 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter_18pt-Regular.ttf
+
+localizations:
+    arb-dir: lib/l10n # Directorio donde estarán los archivos .arb
+    template-arb-file: app_es.arb # Archivo base de idioma
+    output-localization-file: app_localizations.dart # Archivo generado

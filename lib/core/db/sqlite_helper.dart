@@ -65,6 +65,16 @@ class SQLiteHelper {
     ''');
 
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS task_lists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        userId INTEGER NOT NULL,
+        UNIQUE(name, userId),
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE transactions(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         amount REAL NOT NULL,
@@ -482,6 +492,52 @@ class SQLiteHelper {
       'tasks',
       where: 'listName = ? AND userId = ?',
       whereArgs: [listName, userId],
+      limit: 1,
+    );
+    return result.isEmpty;
+  }
+
+  // Método para eliminar una lista de tareas
+
+  /// Obtener listas de tareas de un usuario
+  Future<List<String>> getUserTaskLists(int userId) async {
+    final db = await database;
+    final result = await db.query(
+      'task_lists',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      columns: ['name'],
+    );
+    return result.map((e) => e['name'] as String).toList();
+  }
+
+  /// Agregar una nueva lista para un usuario
+  Future<int> addTaskList(String name, int userId) async {
+    final db = await database;
+    return await db.insert(
+      'task_lists',
+      {'name': name, 'userId': userId},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// Eliminar una lista de tareas
+  Future<int> deleteTaskList(String name, int userId) async {
+    final db = await database;
+    return await db.delete(
+      'task_lists',
+      where: 'name = ? AND userId = ?',
+      whereArgs: [name, userId],
+    );
+  }
+
+  /// Verificar si una lista está vacía
+  Future<bool> isTaskListEmpty(String name, int userId) async {
+    final db = await database;
+    final result = await db.query(
+      'tasks',
+      where: 'listName = ? AND userId = ?',
+      whereArgs: [name, userId],
       limit: 1,
     );
     return result.isEmpty;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
 import '../../core/db/sqlite_helper.dart';
+import 'login_screen.dart';
 
 class CrearCuenta extends StatefulWidget {
   const CrearCuenta({super.key});
@@ -14,38 +14,61 @@ class _CrearCuentaState extends State<CrearCuenta> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _obscurePassword = true;
 
   final SQLiteHelper _dbHelper = SQLiteHelper();
 
   void _handleRegistration() async {
-    FocusScope.of(context).unfocus(); // Oculta el teclado al presionar botón
+    FocusScope.of(context).unfocus();
 
     if (_formKey.currentState!.validate()) {
       final username = _usernameController.text;
-      final email = _emailController.text;
+      final email = _emailController.text.trim().toLowerCase();
       final password = _passwordController.text;
+
+      // Verificar si el correo ya existe
+      final existingUser = await _dbHelper.getUserByEmail(email);
+      if (existingUser != null) {
+        _showTopSnackBar('Este correo ya está registrado');
+        return;
+      }
 
       int result = await _dbHelper.registerUser(username, email, password);
 
       if (result > 0) {
+        _showTopSnackBar('Registro exitoso', isError: false);
+        await Future.delayed(const Duration(milliseconds: 1500));
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al registrar el usuario')),
-        );
+        _showTopSnackBar('Error al registrar el usuario');
       }
     }
+  }
+
+  void _showTopSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height - 100,
+          left: 20,
+          right: 20,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false, // Previene parpadeo
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(), // Oculta teclado al tocar fuera
+        onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -90,17 +113,31 @@ class _CrearCuentaState extends State<CrearCuenta> {
                               hintText: 'Correo',
                               prefixIcon: Icon(Icons.email),
                             ),
-                            validator: (value) => value!.contains('@')
-                                ? null
-                                : 'Correo inválido',
+                            validator: (value) {
+                              if (value!.isEmpty) return 'Ingrese su correo';
+                              if (!value.contains('@')) return 'Correo inválido';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: _passwordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
+                            obscureText: _obscurePassword,
+                            decoration: InputDecoration(
                               hintText: 'Contraseña',
-                              prefixIcon: Icon(Icons.lock),
+                              prefixIcon: const Icon(Icons.lock),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
                             ),
                             validator: (value) => value!.length >= 6
                                 ? null

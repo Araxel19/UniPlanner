@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _obscurePassword = true;
 
   final SQLiteHelper _dbHelper = SQLiteHelper();
 
@@ -21,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
 
     if (_formKey.currentState!.validate()) {
-      final email = _emailController.text.trim().toLowerCase(); // Conversión a minúsculas
+      final email = _emailController.text.trim().toLowerCase();
       final password = _passwordController.text;
 
       bool isLoggedIn = await _dbHelper.loginUser(email, password);
@@ -40,11 +41,24 @@ class _LoginScreenState extends State<LoginScreen> {
           Navigator.pushReplacementNamed(context, AppRoutes.home);
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Credenciales incorrectas')),
-        );
+        _showTopSnackBar('Credenciales incorrectas');
       }
     }
+  }
+
+  void _showTopSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height - 100,
+          left: 20,
+          right: 20,
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,10 +106,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: _passwordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
+                            obscureText: _obscurePassword,
+                            decoration: InputDecoration(
                               hintText: 'Contraseña',
-                              prefixIcon: Icon(Icons.lock),
+                              prefixIcon: const Icon(Icons.lock),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
                             ),
                             validator: (value) =>
                                 value!.isEmpty ? 'Ingrese su contraseña' : null,
