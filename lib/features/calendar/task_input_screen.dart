@@ -3,9 +3,11 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared_widgets/general/app_routes.dart';
 import '../../core/db/sqlite_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class TaskInputScreen extends StatefulWidget {
-  final int? userId;
+  final String? userId;
   final String? defaultList;
 
   const TaskInputScreen({Key? key, this.userId, this.defaultList})
@@ -21,7 +23,7 @@ class _TaskInputScreenState extends State<TaskInputScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   final SQLiteHelper _dbHelper = SQLiteHelper();
-  int? _userId;
+  String? _userId;
   bool _isTaskSelected = true;
 
   @override
@@ -43,7 +45,7 @@ class _TaskInputScreenState extends State<TaskInputScreen> {
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _userId = prefs.getInt('userId');
+      _userId = prefs.getString('userId');
     });
   }
 
@@ -75,6 +77,7 @@ class _TaskInputScreenState extends State<TaskInputScreen> {
     }
   }
 
+  // Reemplazar el método _saveTask
   Future<void> _saveTask() async {
     if (_titleController.text.isEmpty) {
       _showErrorDialog('Por favor ingresa un título');
@@ -91,7 +94,8 @@ class _TaskInputScreenState extends State<TaskInputScreen> {
       return;
     }
 
-    if (_userId == null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       _showErrorDialog('Debes iniciar sesión primero');
       return;
     }
@@ -101,14 +105,19 @@ class _TaskInputScreenState extends State<TaskInputScreen> {
       final formattedTime =
           '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
 
-      await _dbHelper.addTask(
-        _titleController.text,
-        formattedDate,
-        formattedTime,
-        _descriptionController.text,
-        widget.defaultList ?? 'Ideas',
-        _userId!,
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .add({
+        'title': _titleController.text,
+        'dueDate': formattedDate,
+        'dueTime': formattedTime,
+        'description': _descriptionController.text,
+        'isCompleted': false,
+        'listName': widget.defaultList ?? 'Ideas',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

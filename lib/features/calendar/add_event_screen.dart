@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../../shared_widgets/general/app_routes.dart';
 import '../../core/db/sqlite_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AggEvento extends StatefulWidget {
-  final int userId;
+  final String userId;
 
   const AggEvento({Key? key, required this.userId}) : super(key: key);
 
@@ -28,6 +30,7 @@ class _AggEventoState extends State<AggEvento> {
     super.dispose();
   }
 
+  // Reemplazar el método _saveEvent
   Future<void> _saveEvent() async {
     if (_titleController.text.isEmpty) {
       _showErrorDialog('Por favor ingresa un título');
@@ -42,28 +45,29 @@ class _AggEventoState extends State<AggEvento> {
       return;
     }
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _showErrorDialog('Debes iniciar sesión');
+      return;
+    }
+
     final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
     final startTimeStr = _formatTime(_startTime!);
     final endTimeStr = _endTime != null ? _formatTime(_endTime!) : startTimeStr;
 
-    if (_endTime != null) {
-      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
-      final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
-      if (endMinutes < startMinutes) {
-        _showErrorDialog('La hora de fin no puede ser anterior a la de inicio');
-        return;
-      }
-    }
-
     try {
-      await _sqliteHelper.addEvent(
-        _titleController.text,
-        formattedDate,
-        startTimeStr,
-        endTimeStr,
-        _descriptionController.text,
-        widget.userId,
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .add({
+        'title': _titleController.text,
+        'date': formattedDate,
+        'startTime': startTimeStr,
+        'endTime': endTimeStr,
+        'description': _descriptionController.text,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

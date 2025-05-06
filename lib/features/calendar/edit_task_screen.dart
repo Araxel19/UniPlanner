@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../shared_widgets/general/app_routes.dart';
-import '../../core/db/sqlite_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EditTaskScreen extends StatefulWidget {
   final dynamic task;
@@ -19,7 +19,6 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   late TextEditingController _descriptionController;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
-  final SQLiteHelper _dbHelper = SQLiteHelper();
 
   @override
   void initState() {
@@ -87,33 +86,31 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       return;
     }
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _showErrorDialog('Debes iniciar sesión');
+      return;
+    }
+
     try {
       final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
-      // Asegurarse de que taskData es un Map
-      final Map<String, dynamic> taskData = widget.task is Map
-          ? widget.task
-          : {
-              'id': widget.task.id,
-              'title': widget.task.title,
-              'description': widget.task.description,
-              'dueDate': widget.task.dueDate,
-              'dueTime': widget.task.dueTime,
-              'isCompleted': widget.task.isCompleted,
-              'listName': widget.task.listName ?? 'Ideas',
-            };
-
-      await _dbHelper.updateTask(
-        taskData['id'],
-        _titleController.text,
-        formattedDate,
-        formattedTime,
-        _descriptionController.text,
-        taskData['isCompleted'] ?? false,
-        taskData['listName'] ?? 'Ideas', // Usar el valor del Map
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .doc(widget.task.id) // Usar el ID del documento existente
+          .update({
+        'title': _titleController.text,
+        'dueDate': formattedDate,
+        'dueTime': formattedTime,
+        'description': _descriptionController.text,
+        'isCompleted': widget.task.isCompleted,
+        'listName': widget.task.listName ?? 'Ideas',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'dart:io';
+import 'dart:convert';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 import '../../shared_widgets/general/app_routes.dart';
-import '../../core/db/sqlite_helper.dart';
-import 'dart:math';
 import 'dart:async';
+import 'dart:math';
+import 'package:rxdart/rxdart.dart';
+import '../../providers/theme_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -20,27 +23,26 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _userName = '';
-  String _selectedEmoji = '👤';
   File? _userImage;
-  List<Map<String, dynamic>> todayItems = [];
-  List<Map<String, String>> expenses = [
-    {'name': 'Pasajes', 'amount': '10.000'},
-    {'name': 'Libro Inglés', 'amount': '80.000'},
-  ];
-
+  String _selectedEmoji = '👤';
   String motivationalQuote = '';
   String quoteAuthor = '';
   bool _isLoadingQuote = true;
   bool _showLocalQuote = true;
-  bool _isLoadingTasks = true;
   Timer? _quoteTimer;
-  final SQLiteHelper _dbHelper = SQLiteHelper();
 
+  // Variables financieras
   double _currentBalance = 0;
   List<Map<String, dynamic>> _recentTransactions = [];
   bool _isLoadingFinances = true;
-  int? _currentUserId;
 
+  // Streams para datos en tiempo real
+  Stream<List<Map<String, dynamic>>>? _todayItemsStream;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+
+  bool _isDisposed = false;
   final List<Map<String, String>> _backupQuotes = [
     {
       "quote":
@@ -72,149 +74,153 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _initializeQuote();
+    _loadThemePreference();
+    _userDataSubscription?.cancel();
+    _todayItemsStream = null;
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _quoteTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadThemePreference() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-    // Cargar ID del usuario
-    final userId = prefs.getInt('userId');
-    if (userId == null) {
-      // Si no hay usuario logueado, redirigir al login
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    if (userDoc.exists) {
+      final themePreference = userDoc.data()?['themePreference'];
+      if (themePreference != null) {
+        final themeProvider =
+            Provider.of<ThemeProvider>(context, listen: false);
+        themeProvider.toggleTheme(themePreference == 'dark');
+      }
+    }
+  }
+
+  // Convertir Base64 a imagen
+  File? _base64ToImage(String? base64String) {
+    if (base64String == null) return null;
+    try {
+      final bytes = base64Decode(base64String);
+      final tempDir = Directory.systemTemp;
+      final file = File(
+          '${tempDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.png');
+      file.writeAsBytesSync(bytes);
+      return file;
+    } catch (e) {
+      debugPrint('Error al convertir Base64 a imagen: $e');
+      return null;
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    if (_isDisposed) return;
+
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacementNamed(context, AppRoutes.login);
       });
       return;
     }
 
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) return;
+
+    final data = userDoc.data();
+    if (data == null) return;
+
+    // Cargar nombre y emoji
     setState(() {
-      _currentUserId = userId;
+      _userName = user.displayName?.split(' ').first.toUpperCase() ?? 'USUARIO';
+      _selectedEmoji = data['avatarEmoji'] ?? '👤';
     });
 
-    // Cargar nombre y avatar
-    await _loadUserName();
-    await _loadUserAvatar();
-
-    // Cargar datos específicos del usuario
-    await _loadTodayItems();
-    await _loadFinancialData();
-    _initializeQuote();
-  }
-
-  Future<void> _loadUserName() async {
-    final prefs = await SharedPreferences.getInstance();
-    final fullName = prefs.getString('username') ?? 'Usuario';
-    final firstName = fullName.split(' ').first;
-
-    setState(() {
-      _userName = firstName.toUpperCase();
-    });
-  }
-
-  // Reemplazar el método _loadUserAvatar existente con este:
-  Future<void> _loadUserAvatar() async {
-    if (_currentUserId == null) return;
-
-    try {
-      final avatar = await _dbHelper.getUserAvatar(_currentUserId!);
-
-      if (avatar == null) {
-        // Si no hay avatar en la base de datos, usar valores por defecto
-        setState(() {
-          _selectedEmoji = '👤';
-          _userImage = null;
-        });
-        return;
-      }
-
+    // Cargar imagen desde Base64
+    final imageBase64 = data['avatarBase64'];
+    if (imageBase64 != null && imageBase64 is String) {
       setState(() {
-        _selectedEmoji = avatar['emoji'] ?? '👤';
-        final imagePath = avatar['imagePath'];
-        if (imagePath != null && File(imagePath).existsSync()) {
-          _userImage = File(imagePath);
-        } else {
-          _userImage = null;
-        }
-      });
-    } catch (e) {
-      debugPrint('Error al cargar avatar: $e');
-      setState(() {
-        _selectedEmoji = '👤';
-        _userImage = null;
+        _userImage = _base64ToImage(imageBase64);
       });
     }
+
+    // Configurar streams y cargar datos financieros
+    _todayItemsStream = _getTodayItemsStream(user.uid);
+    await _loadFinancialData(user.uid);
   }
 
-  Future<void> _loadTodayItems() async {
-    if (_currentUserId == null) return;
-
+  Stream<List<Map<String, dynamic>>> _getTodayItemsStream(String userId) {
     final now = DateTime.now();
     final formattedDate = DateFormat('yyyy-MM-dd').format(now);
 
-    try {
-      // Obtener eventos del usuario
-      final userEvents = await _dbHelper.getEventsForDay(formattedDate,
-          userId: _currentUserId);
+    // Stream combinado de eventos y tareas
+    final eventsStream = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('events')
+        .where('date', isEqualTo: formattedDate)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              return {...data, 'id': doc.id, 'type': 'event'};
+            }).toList());
 
-      // Obtener tareas del usuario
-      final userTasks =
-          await _dbHelper.getTasksForDay(formattedDate, userId: _currentUserId);
+    final tasksStream = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('tasks')
+        .where('dueDate', isEqualTo: formattedDate)
+        .where('isCompleted', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              return {...data, 'id': doc.id, 'type': 'task'};
+            }).toList());
 
-      // Combinar y formatear los resultados
-      final combinedItems = [
-        ...userTasks.map((e) => {...e, 'type': 'task'}),
-        ...userEvents.map((e) => {...e, 'type': 'event'}),
-      ];
-
-      // Filtrar tareas completadas
-      final filteredItems = combinedItems.where((item) {
-        if (item['type'] == 'task') {
-          return item['isCompleted'] != 1; // Mostrar solo tareas no completadas
-        }
-        return true; // Mostrar todos los eventos
-      }).toList();
-
-      setState(() {
-        todayItems = filteredItems;
-        _isLoadingTasks = false;
-      });
-    } catch (e) {
-      setState(() {
-        todayItems = [
-          {'title': 'Error al cargar pendientes', 'type': 'error'}
-        ];
-        _isLoadingTasks = false;
-      });
-    }
+    return Rx.combineLatest2(
+      eventsStream,
+      tasksStream,
+      (List<Map<String, dynamic>> events, List<Map<String, dynamic>> tasks) {
+        return [...events, ...tasks];
+      },
+    );
   }
 
-  Future<void> _loadFinancialData() async {
-    if (_currentUserId == null) {
-      setState(() {
-        _isLoadingFinances = false;
-      });
-      return;
-    }
-
+  Future<void> _loadFinancialData(String userId) async {
     try {
-      // Obtener balance actual del usuario
-      final balance = await _dbHelper.getBalance(_currentUserId!);
+      // Obtener balance total
+      final transactions = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('transactions')
+          .orderBy('date', descending: true)
+          .limit(100)
+          .get();
 
-      // Obtener transacciones recientes del usuario (últimas 3)
-      final transactions = await _dbHelper.getTransactionsByPeriod(
-        period: 'Mes',
-        userId: _currentUserId!,
-        startDate: DateTime.now(),
-      );
+      double balance = 0;
+      final List<Map<String, dynamic>> recentTransactions = [];
 
-      // Filtrar solo las últimas 3 transacciones
-      final recentTransactions = transactions.take(3).toList();
+      for (final doc in transactions.docs) {
+        final data = doc.data();
+        final amount = data['amount'] as double;
+        final isIncome = data['isIncome'] as bool;
+
+        if (isIncome) {
+          balance += amount;
+        } else {
+          balance -= amount;
+        }
+
+        if (recentTransactions.length < 3) {
+          recentTransactions.add({...data, 'id': doc.id});
+        }
+      }
 
       setState(() {
         _currentBalance = balance;
@@ -458,24 +464,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleTaskCompletion(
       Map<String, dynamic> task, BuildContext context) async {
-    final dbHelper = SQLiteHelper();
     try {
-      // Convertimos el valor a booleano
-      final isCompleted = task['isCompleted'] == 1;
-      await dbHelper.updateTaskCompletion(
-          task['id'], !isCompleted // Invertimos el estado actual
-          );
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
 
-      // Actualizamos solo el item modificado
-      setState(() {
-        final index = todayItems.indexWhere((item) => item['id'] == task['id']);
-        if (index != -1) {
-          todayItems[index]['isCompleted'] = isCompleted ? 0 : 1;
-
-          // Opcional: Si quieres que las tareas completadas desaparezcan
-          todayItems.removeWhere(
-              (item) => item['type'] == 'task' && item['isCompleted'] == 1);
-        }
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('tasks')
+          .doc(task['id'])
+          .update({
+        'isCompleted': !(task['isCompleted'] ?? false),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -749,7 +749,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header con nombre y menú (se mantiene igual)
+            // Header con nombre y menú
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
@@ -800,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   children: [
-                    // Frase motivacional (se mantiene igual)
+                    // Frase motivacional
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 500),
                       child: Container(
@@ -844,7 +844,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    // Sección "Hoy" (se mantiene igual)
+                    // Sección "Hoy" con StreamBuilder
                     Container(
                       width: double.infinity,
                       constraints: const BoxConstraints(maxWidth: 600),
@@ -875,41 +875,51 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                           const SizedBox(height: 8.0),
-                          _isLoadingTasks
-                              ? const Center(child: CircularProgressIndicator())
-                              : todayItems.isEmpty
-                                  ? Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 16),
-                                      child: Text(
-                                        'No hay pendientes para hoy',
-                                        style: theme.textTheme.bodyMedium,
-                                      ),
-                                    )
-                                  : ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxHeight: 150,
-                                      ),
-                                      child: Scrollbar(
-                                        child: ListView.separated(
-                                          shrinkWrap: true,
-                                          physics:
-                                              const BouncingScrollPhysics(),
-                                          itemCount: todayItems.length,
-                                          separatorBuilder: (context, index) =>
-                                              const SizedBox(height: 8),
-                                          itemBuilder: (context, index) {
-                                            return _buildTaskItem(
-                                                todayItems[index]);
-                                          },
-                                        ),
-                                      ),
-                                    ),
+                          StreamBuilder<List<Map<String, dynamic>>>(
+                            stream: _todayItemsStream,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                    child: CircularProgressIndicator());
+                              }
+
+                              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    'No hay pendientes para hoy',
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                );
+                              }
+
+                              final items = snapshot.data!;
+
+                              return ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxHeight: 150),
+                                child: Scrollbar(
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount: items.length,
+                                    separatorBuilder: (context, index) =>
+                                        const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      return _buildTaskItem(items[index]);
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                     ),
 
-                    // Nueva sección de finanzas (después de pendientes)
+                    // Sección de finanzas
                     _buildFinanceSection(),
                   ],
                 ),
@@ -923,4 +933,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-// Fin de la clase HomeScreen

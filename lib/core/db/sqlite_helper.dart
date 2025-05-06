@@ -769,7 +769,7 @@ class SQLiteHelper {
   /// Obtiene categorías por tipo (ingreso/gasto)
   Future<List<Map<String, dynamic>>> getCategoriesByType({
     required bool isIncome,
-    required int userId,
+    required String userId,
   }) async {
     final db = await database;
     return await db.query(

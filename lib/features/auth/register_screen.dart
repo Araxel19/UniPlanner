@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/db/sqlite_helper.dart';
-import 'login_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:uniplanner/providers/auth_provider.dart';
+import 'email_verification_screen.dart';
 
 class CrearCuenta extends StatefulWidget {
   const CrearCuenta({super.key});
@@ -16,34 +17,30 @@ class _CrearCuentaState extends State<CrearCuenta> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
 
-  final SQLiteHelper _dbHelper = SQLiteHelper();
-
   void _handleRegistration() async {
     FocusScope.of(context).unfocus();
 
     if (_formKey.currentState!.validate()) {
-      final username = _usernameController.text;
-      final email = _emailController.text.trim().toLowerCase();
-      final password = _passwordController.text;
+      try {
+        final username = _usernameController.text;
+        final email = _emailController.text.trim().toLowerCase();
+        final password = _passwordController.text;
 
-      // Verificar si el correo ya existe
-      final existingUser = await _dbHelper.getUserByEmail(email);
-      if (existingUser != null) {
-        _showTopSnackBar('Este correo ya está registrado');
-        return;
-      }
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.register(email, password, username);
 
-      int result = await _dbHelper.registerUser(username, email, password);
-
-      if (result > 0) {
-        _showTopSnackBar('Registro exitoso', isError: false);
-        await Future.delayed(const Duration(milliseconds: 1500));
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-      } else {
-        _showTopSnackBar('Error al registrar el usuario');
+        if (authProvider.user != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EmailVerificationScreen(
+                user: authProvider.user!,
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        _showTopSnackBar(e.toString());
       }
     }
   }
@@ -115,7 +112,8 @@ class _CrearCuentaState extends State<CrearCuenta> {
                             ),
                             validator: (value) {
                               if (value!.isEmpty) return 'Ingrese su correo';
-                              if (!value.contains('@')) return 'Correo inválido';
+                              if (!value.contains('@'))
+                                return 'Correo inválido';
                               return null;
                             },
                           ),
@@ -150,7 +148,8 @@ class _CrearCuentaState extends State<CrearCuenta> {
                               onPressed: _handleRegistration,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
                               ),
                               child: const Text('Registrarse'),
                             ),

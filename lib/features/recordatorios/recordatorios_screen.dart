@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/db/sqlite_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 import '../../shared_widgets/general/app_routes.dart';
 
@@ -13,8 +13,8 @@ class RecordatoriosScreen extends StatefulWidget {
 }
 
 class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
-  final SQLiteHelper _dbHelper = SQLiteHelper();
-  int? _userId;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String? _userId;
   List<String> _lists = ['Hoy', 'Ideas'];
   String _selectedList = 'Ideas';
   Map<String, bool> _completedTasksVisibility = {};
@@ -23,53 +23,84 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserId();
+    _loadUser();
   }
 
-  Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('userId');
-
-    if (userId == null) return;
-
-    setState(() {
-      _userId = userId;
-    });
-
-    _loadLists();
+  Future<void> _loadUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        _userId = user.uid;
+      });
+      await _loadLists();
+    }
   }
 
   Future<void> _loadLists() async {
     if (_userId == null) return;
 
-    final userLists = await _dbHelper.getUserTaskLists(_userId!);
+    try {
+      final listsSnapshot = await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('taskLists')
+          .get();
 
-    setState(() {
-      _lists = ['Hoy', 'Ideas']..addAll(userLists);
+      setState(() {
+        _lists = ['Hoy', 'Ideas']
+          ..addAll(listsSnapshot.docs.map((doc) => doc.id));
 
-      // Inicializar visibilidad de tareas completadas
-      for (var list in _lists) {
-        _completedTasksVisibility[list] = false;
-      }
+        for (var list in _lists) {
+          _completedTasksVisibility[list] = false;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error cargando listas: $e');
+    }
+  }
+
+  Stream<QuerySnapshot> _getTasksForListStream() {
+    if (_userId == null || _selectedList == 'Hoy') {
+      return const Stream.empty();
+    }
+
+    return _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .where('listName', isEqualTo: _selectedList)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> _getTodayTasksStream() {
+    if (_userId == null) return const Stream.empty();
+
+    final formattedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .where('dueDate', isEqualTo: formattedDate)
+        .where('isCompleted', isEqualTo: false)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Future<void> _toggleTaskCompletion(String taskId, bool isCompleted) async {
+    if (_userId == null) return;
+
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .doc(taskId)
+        .update({
+      'isCompleted': isCompleted,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Future<List<Map<String, dynamic>>> _getTasksForList() async {
-    if (_userId == null) return [];
-    return await _dbHelper.getTasksForList(_selectedList, _userId!);
-  }
-
-  Future<List<Map<String, dynamic>>> _getTodayTasks() async {
-    final formattedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    return await _dbHelper.getTasksForDay(formattedDate, userId: _userId);
-  }
-
-  Future<void> _toggleTaskCompletion(int taskId, bool isCompleted) async {
-    await _dbHelper.updateTaskCompletion(taskId, isCompleted);
-    setState(() {});
-  }
-
-  // En tu pantalla principal (RecordatoriosScreen)
   void _showAddTaskDialog(BuildContext context) {
     if (_userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,11 +115,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       arguments: {
         'userId': _userId,
         'defaultList': _selectedList == 'Hoy' ? 'Ideas' : _selectedList,
-        'availableLists': _lists
-            .where((l) => l != 'Hoy')
-            .toList(), // Excluye 'Hoy' si es necesario
+        'availableLists': _lists.where((l) => l != 'Hoy').toList(),
       },
-    ).then((_) => setState(() {}));
+    );
   }
 
   void _showAddListDialog(BuildContext context) {
@@ -114,12 +143,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
               onPressed: () async {
                 if (controller.text.isNotEmpty && _userId != null) {
                   try {
-                    await _dbHelper.addTaskList(controller.text, _userId!);
-                    setState(() {
-                      _lists.add(controller.text);
-                      _completedTasksVisibility[controller.text] = false;
-                      _selectedList = controller.text;
-                    });
+                    await _addTaskList(controller.text);
                     Navigator.pop(context);
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -134,6 +158,23 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
         );
       },
     );
+  }
+
+  Future<void> _addTaskList(String listName) async {
+    if (_userId == null) return;
+
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('taskLists')
+        .doc(listName)
+        .set({'createdAt': FieldValue.serverTimestamp()});
+
+    setState(() {
+      _lists.add(listName);
+      _completedTasksVisibility[listName] = false;
+      _selectedList = listName;
+    });
   }
 
   void _showRenameListDialog(BuildContext context, String currentName) {
@@ -162,16 +203,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                     controller.text != currentName &&
                     _userId != null) {
                   try {
-                    await _dbHelper.renameTaskList(
-                        currentName, controller.text, _userId!);
-                    setState(() {
-                      final index = _lists.indexOf(currentName);
-                      _lists[index] = controller.text;
-                      _selectedList = controller.text;
-                      _completedTasksVisibility[controller.text] =
-                          _completedTasksVisibility[currentName] ?? false;
-                      _completedTasksVisibility.remove(currentName);
-                    });
+                    await _renameTaskList(currentName, controller.text);
                     Navigator.pop(context);
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -188,6 +220,49 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     );
   }
 
+  Future<void> _renameTaskList(String oldName, String newName) async {
+    if (_userId == null || oldName == 'Hoy' || oldName == 'Ideas') return;
+
+    // Actualizar el nombre de la lista en taskLists
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('taskLists')
+        .doc(oldName)
+        .delete();
+
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('taskLists')
+        .doc(newName)
+        .set({'createdAt': FieldValue.serverTimestamp()});
+
+    // Actualizar todas las tareas que pertenecen a esta lista
+    final batch = _firestore.batch();
+    final tasks = await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .where('listName', isEqualTo: oldName)
+        .get();
+
+    for (var task in tasks.docs) {
+      batch.update(task.reference, {'listName': newName});
+    }
+
+    await batch.commit();
+
+    setState(() {
+      final index = _lists.indexOf(oldName);
+      _lists[index] = newName;
+      _selectedList = newName;
+      _completedTasksVisibility[newName] =
+          _completedTasksVisibility[oldName] ?? false;
+      _completedTasksVisibility.remove(oldName);
+    });
+  }
+
   Future<void> _deleteList(String listName) async {
     if (listName == 'Ideas' || listName == 'Hoy' || _userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -198,8 +273,15 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       return;
     }
 
-    final isEmpty = await _dbHelper.isTaskListEmpty(listName, _userId!);
-    if (!isEmpty) {
+    // Verificar si hay tareas en esta lista
+    final tasks = await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .where('listName', isEqualTo: listName)
+        .get();
+
+    if (tasks.docs.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No se puede eliminar una lista con tareas'),
@@ -209,7 +291,13 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     }
 
     try {
-      await _dbHelper.deleteTaskList(listName, _userId!);
+      await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('taskLists')
+          .doc(listName)
+          .delete();
+
       setState(() {
         _lists.remove(listName);
         _completedTasksVisibility.remove(listName);
@@ -222,6 +310,20 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
         SnackBar(content: Text('Error al eliminar lista: $e')),
       );
     }
+  }
+
+  Future<void> _moveTaskToList(String taskId, String newList) async {
+    if (_userId == null) return;
+
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('tasks')
+        .doc(taskId)
+        .update({
+      'listName': newList,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   @override
@@ -328,34 +430,35 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   }
 
   Widget _buildTasksList() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getTasksForList(),
+    return StreamBuilder<QuerySnapshot>(
+      stream: _getTasksForListStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError || !snapshot.hasData) {
+
+        if (snapshot.hasError) {
+          debugPrint('Error en stream de tareas: ${snapshot.error}');
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(Icons.error, size: 50, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(
+                const Text(
                   'Error al cargar tareas',
-                  style: TextStyle(color: Colors.grey[600]),
+                  style: TextStyle(color: Colors.grey),
+                ),
+                TextButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('Reintentar'),
                 ),
               ],
             ),
           );
         }
 
-        final tasks = snapshot.data!;
-        final pendingTasks = tasks.where((t) => t['isCompleted'] != 1).toList();
-        final completedTasks =
-            tasks.where((t) => t['isCompleted'] == 1).toList();
-
-        if (pendingTasks.isEmpty && completedTasks.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -364,49 +467,45 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'No hay tareas en "$_selectedList"',
-                  style: TextStyle(color: Colors.grey[600]),
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ],
             ),
           );
         }
 
+        final tasks = snapshot.data!.docs;
+        final pendingTasks =
+            tasks.where((doc) => !(doc['isCompleted'] ?? false)).toList();
+        final completedTasks =
+            tasks.where((doc) => doc['isCompleted'] ?? false).toList();
+
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Tareas pendientes
-            ...pendingTasks.map((task) => _buildTaskItem(task)).toList(),
-
-            // Tareas completadas con opción para mostrar/ocultar
+            ...pendingTasks.map((doc) => _buildTaskItem(doc)).toList(),
             if (completedTasks.isNotEmpty) ...[
               const SizedBox(height: 16),
               GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _showCompletedTasks = !_showCompletedTasks;
-                  });
-                },
+                onTap: () =>
+                    setState(() => _showCompletedTasks = !_showCompletedTasks),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       'Tareas Completadas',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                    Icon(
-                      _showCompletedTasks
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                    ),
+                    Icon(_showCompletedTasks
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
               if (_showCompletedTasks)
-                ...completedTasks.map((task) => _buildTaskItem(task)).toList(),
+                ...completedTasks.map((doc) => _buildTaskItem(doc)).toList(),
             ],
           ],
         );
@@ -415,43 +514,44 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   }
 
   Widget _buildTodayTasksList() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getTodayTasks(),
+    return StreamBuilder<QuerySnapshot>(
+      stream: _getTodayTasksStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError || !snapshot.hasData) {
+        if (snapshot.hasError) {
+          debugPrint('Error en stream de tareas de hoy: ${snapshot.error}');
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(Icons.error, size: 50, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(
+                const Text(
                   'Error al cargar tareas',
-                  style: TextStyle(color: Colors.grey[600]),
+                  style: TextStyle(color: Colors.grey),
+                ),
+                TextButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('Reintentar'),
                 ),
               ],
             ),
           );
         }
 
-        // Filtrar solo tareas no completadas para la vista de Hoy
-        final todayTasks =
-            snapshot.data!.where((task) => task['isCompleted'] != 1).toList();
-
-        if (todayTasks.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(Icons.today, size: 50, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(
+                const Text(
                   'No hay tareas pendientes para hoy',
-                  style: TextStyle(color: Colors.grey[600]),
+                  style: TextStyle(color: Colors.grey),
                 ),
               ],
             ),
@@ -460,24 +560,27 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: todayTasks.length,
-          itemBuilder: (context, index) => _buildTaskItem(todayTasks[index]),
+          itemCount: snapshot.data!.docs.length,
+          itemBuilder: (context, index) =>
+              _buildTaskItem(snapshot.data!.docs[index]),
         );
       },
     );
   }
 
-  Widget _buildTaskItem(Map<String, dynamic> task) {
-    final isCompleted = task['isCompleted'] == 1;
+  Widget _buildTaskItem(DocumentSnapshot doc) {
+    final task = doc.data() as Map<String, dynamic>;
+    final isCompleted = task['isCompleted'] ?? false;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Checkbox(
           value: isCompleted,
-          onChanged: (value) => _toggleTaskCompletion(task['id'], !isCompleted),
+          onChanged: (value) => _toggleTaskCompletion(doc.id, !isCompleted),
         ),
         title: Text(
-          task['title'],
+          task['title'] ?? 'Sin título',
           style: TextStyle(
             decoration: isCompleted ? TextDecoration.lineThrough : null,
             color: isCompleted ? Colors.grey : null,
@@ -488,7 +591,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
           children: [
             if (task['description']?.toString().isNotEmpty == true)
               Text(task['description']),
-            if (task['dueTime'] != null)
+            if (task['dueTime'] != null && task['dueDate'] != null)
               Text('${task['dueTime']} - ${task['dueDate']}'),
           ],
         ),
@@ -522,14 +625,13 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 context,
                 AppRoutes.editReminderTask,
                 arguments: {
-                  'task': task,
+                  'task': {'id': doc.id, ...task},
                   'userId': _userId,
                   'availableLists': _lists,
                 },
               );
-              setState(() {});
             } else if (value == 'move') {
-              _showMoveTaskDialog(context, task['id']);
+              _showMoveTaskDialog(context, doc.id);
             }
           },
         ),
@@ -537,7 +639,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     );
   }
 
-  void _showMoveTaskDialog(BuildContext context, int taskId) {
+  void _showMoveTaskDialog(BuildContext context, String taskId) {
     showDialog(
       context: context,
       builder: (context) {
@@ -564,10 +666,5 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
         );
       },
     );
-  }
-
-  Future<void> _moveTaskToList(int taskId, String listName) async {
-    await _dbHelper.updateTaskList(taskId, listName);
-    setState(() {});
   }
 }

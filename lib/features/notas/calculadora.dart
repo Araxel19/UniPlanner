@@ -1,47 +1,51 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
-import '../../core/db/sqlite_helper.dart';
+import '../../core/db/firestore_service.dart';
 import '../../shared_widgets/general/app_routes.dart';
 
 class Calculadora extends StatefulWidget {
   const Calculadora({Key? key}) : super(key: key);
 
   @override
+  // ignore: library_private_types_in_public_api
   _CalculadoraState createState() => _CalculadoraState();
 }
 
 class _CalculadoraState extends State<Calculadora> {
-  final SQLiteHelper _dbHelper = SQLiteHelper();
+  final FirestoreService _firestoreService = FirestoreService();
   List<Map<String, dynamic>> _courses = [];
-  int? _userId;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadUserId();
-  }
-
-  Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userEmail = prefs.getString('userEmail');
-    if (userEmail != null) {
-      final user = await _dbHelper.getUserByEmail(userEmail);
-      if (user != null) {
-        setState(() {
-          _userId = user['id'] as int;
-        });
-        _loadCourses();
-      }
-    }
+    _loadCourses();
   }
 
   Future<void> _loadCourses() async {
-    if (_userId == null) return;
-    final courses = await _dbHelper.getUserCourses(_userId!);
     setState(() {
-      _courses = courses;
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      final courses = await _firestoreService.getUserCourses();
+      if (mounted) {
+        setState(() {
+          _courses = courses;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading courses: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error al cargar los cursos: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -53,139 +57,155 @@ class _CalculadoraState extends State<Calculadora> {
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 32),
-                      Text(
-                        'Mis cursos',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      _buildCourseList(theme, isDarkMode, context),
-                      const SizedBox(height: 24),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FloatingActionButton(
-                          onPressed: () async {
-                            await Navigator.pushNamed(
-                                context, AppRoutes.registrarCurso);
-                            if (_userId != null) {
-                              await _loadCourses();
-                            }
-                          },
-                          backgroundColor: isDarkMode
-                              ? theme.colorScheme.primaryContainer
-                              : const Color(0xFFECE6F0),
-                          elevation: 2,
-                          child: Icon(
-                            Icons.add,
-                            size: 28,
-                            color: isDarkMode
-                                ? theme.colorScheme.onPrimaryContainer
-                                : Colors.black,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                    ],
-                  ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Text(
+                'Mis cursos',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            const BottomNavigation(),
+            Expanded(
+              child: _buildCourseContent(theme, isDarkMode),
+            ),
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await Navigator.pushNamed(context, AppRoutes.registrarCurso);
+          await _loadCourses();
+        },
+        backgroundColor: isDarkMode
+            ? theme.colorScheme.primaryContainer
+            : const Color(0xFFECE6F0),
+        elevation: 4,
+        child: Icon(
+          Icons.add,
+          size: 28,
+          color:
+              isDarkMode ? theme.colorScheme.onPrimaryContainer : Colors.black,
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: const BottomNavigation(),
     );
   }
 
-  Widget _buildCourseList(
-      ThemeData theme, bool isDarkMode, BuildContext context) {
+  Widget _buildCourseContent(ThemeData theme, bool isDarkMode) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return _buildErrorWidget(theme, isDarkMode);
+    }
+
     if (_courses.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            'No tienes cursos registrados',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
+        child: Text(
+          'No tienes cursos registrados',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
           ),
         ),
       );
     }
 
-    return Column(
-      children: [
-        for (var course in _courses)
-          Column(
-            children: [
-              ListTile(
-                leading: Icon(
-                  Icons.school,
-                  size: 32,
-                  color: isDarkMode ? Colors.white : Colors.blueAccent,
+    return Padding(
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: MediaQuery.of(context).padding.bottom + 80,
+      ),
+      child: ListView.builder(
+        itemCount: _courses.length,
+        itemBuilder: (context, index) {
+          final course = _courses[index];
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey[800] : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              leading: Icon(
+                Icons.school,
+                size: 32,
+                color: isDarkMode ? Colors.white : Colors.blueAccent,
+              ),
+              title: Text(
+                course['name'] as String,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-                title: Text(
-                  course['name'] as String,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: isDarkMode ? Colors.white : Colors.black,
-                  ),
+              ),
+              subtitle: Text(
+                'Ver notas',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                 ),
-                subtitle: Text(
-                  'Ver notas',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
+              ),
+              trailing: IconButton(
+                icon: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                 ),
-                trailing: IconButton(
-                  icon: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  onPressed: () {
-                    Navigator.pushNamed(
-                      context,
-                      AppRoutes.registrarNotas,
-                      arguments: {
-                        'courseId': course['id'],
-                        'courseName': course['name'],
-                      },
-                    );
-                  },
-                ),
-                onTap: () async {
-                  final shouldRefresh = await Navigator.pushNamed(
+                onPressed: () {
+                  Navigator.pushNamed(
                     context,
-                    AppRoutes.editarCurso,
+                    AppRoutes.registrarNotas,
                     arguments: {
                       'courseId': course['id'],
                       'courseName': course['name'],
-                      'courseLabel': course['label'] ?? '',
                     },
                   );
-
-                  if (shouldRefresh == true) {
-                    await _loadCourses();
-                  }
                 },
               ),
-              const Divider(height: 1),
-            ],
+              onTap: () async {
+                final shouldRefresh = await Navigator.pushNamed(
+                  context,
+                  AppRoutes.editarCurso,
+                  arguments: {
+                    'courseId': course['id'],
+                    'courseName': course['name'],
+                    'courseLabel': course['label'] ?? '',
+                  },
+                );
+
+                if (shouldRefresh == true) {
+                  await _loadCourses();
+                }
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(ThemeData theme, bool isDarkMode) {
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            _errorMessage!,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: isDarkMode ? Colors.red[300] : Colors.red[600],
+            ),
           ),
-      ],
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadCourses,
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
     );
   }
 }

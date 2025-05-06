@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../shared_widgets/general/app_routes.dart';
-import '../../core/db/sqlite_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 class EditEvento extends StatefulWidget {
@@ -20,7 +20,6 @@ class _EditEventoState extends State<EditEvento> {
   late TimeOfDay _endTime;
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  final SQLiteHelper _sqliteHelper = SQLiteHelper();
 
   @override
   void initState() {
@@ -59,26 +58,30 @@ class _EditEventoState extends State<EditEvento> {
       return;
     }
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _showErrorDialog('Debes iniciar sesión');
+      return;
+    }
+
     final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final startTimeStr = _formatTime(_startTime);
     final endTimeStr = _formatTime(_endTime);
 
-    final startMinutes = _startTime.hour * 60 + _startTime.minute;
-    final endMinutes = _endTime.hour * 60 + _endTime.minute;
-    if (endMinutes < startMinutes) {
-      _showErrorDialog('La hora de fin no puede ser anterior a la de inicio');
-      return;
-    }
-
     try {
-      await _sqliteHelper.updateEvent(
-        widget.event.id,
-        _titleController.text,
-        formattedDate,
-        startTimeStr,
-        endTimeStr,
-        _descriptionController.text,
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(widget.event.id) // Usar el ID del documento existente
+          .update({
+        'title': _titleController.text,
+        'date': formattedDate,
+        'startTime': startTimeStr,
+        'endTime': endTimeStr,
+        'description': _descriptionController.text,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

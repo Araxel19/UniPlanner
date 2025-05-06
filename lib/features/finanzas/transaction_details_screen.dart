@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import '../../core/db/sqlite_helper.dart';
 import 'editar_transaccion.dart';
+import '../../core/db/firebase_finanzas_helper.dart';
 
 class TransactionDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -137,11 +136,10 @@ class TransactionDetailsScreen extends StatelessWidget {
 
                           if (confirm == true) {
                             try {
-                              await Provider.of<SQLiteHelper>(context,
-                                      listen: false)
-                                  .deleteTransaction(transaction['id']);
-                              Navigator.pop(
-                                  context, true); // Indica que se eliminó
+                              await FirebaseFinanzasHelper().deleteTransaction(
+                                  transaction['id']
+                                      as String); // Asegura el tipo String
+                              Navigator.pop(context, true);
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/db/sqlite_helper.dart';
+import '../../core/db/firestore_service.dart';
 import '../../shared_widgets/general/app_routes.dart';
 
 class RegistrarCurso extends StatefulWidget {
@@ -14,40 +13,24 @@ class _RegistrarCursoState extends State<RegistrarCurso> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _labelController = TextEditingController();
-  final SQLiteHelper _dbHelper = SQLiteHelper();
-  int? _userId;
+  final FirestoreService _firestoreService = FirestoreService();
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadUserId();
-  }
-
-  Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userEmail = prefs.getString('userEmail');
-    if (userEmail != null) {
-      final user = await _dbHelper.getUserByEmail(userEmail);
-      if (user != null) {
-        setState(() {
-          _userId = user['id'] as int;
-        });
-      }
-    }
   }
 
   Future<void> _saveCourse() async {
-    if (_formKey.currentState!.validate() && _userId != null) {
+    if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
       try {
-        await _dbHelper.addCourse(
+        await _firestoreService.addCourse(
           _nameController.text,
-          _labelController.text,
-          _userId!,
+          label: _labelController.text,
         );
 
         if (!mounted) return;

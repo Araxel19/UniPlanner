@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../core/models/event_model.dart';
-import '../../../core/db/sqlite_helper.dart';
-import '../../shared_widgets/general/app_routes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class EditEventReminderScreen extends StatefulWidget {
   final Map<String, dynamic> event;
-  final int userId;
+  final String userId;
 
   const EditEventReminderScreen({
     Key? key,
@@ -15,7 +13,8 @@ class EditEventReminderScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<EditEventReminderScreen> createState() => _EditEventReminderScreenState();
+  State<EditEventReminderScreen> createState() =>
+      _EditEventReminderScreenState();
 }
 
 class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
@@ -24,7 +23,6 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
   late TimeOfDay _endTime;
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  final SQLiteHelper _sqliteHelper = SQLiteHelper();
 
   @override
   void initState() {
@@ -69,21 +67,26 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
 
     final startMinutes = _startTime.hour * 60 + _startTime.minute;
     final endMinutes = _endTime.hour * 60 + _endTime.minute;
-    
+
     if (endMinutes < startMinutes) {
       _showErrorDialog('La hora de fin no puede ser anterior a la de inicio');
       return;
     }
 
     try {
-      await _sqliteHelper.updateEvent(
-        widget.event['id'],
-        _titleController.text,
-        formattedDate,
-        startTimeStr,
-        endTimeStr,
-        _descriptionController.text,
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('events')
+          .doc(widget.event['id'])
+          .update({
+        'title': _titleController.text,
+        'date': formattedDate,
+        'startTime': startTimeStr,
+        'endTime': endTimeStr,
+        'description': _descriptionController.text,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -142,10 +145,11 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Selector de fecha
             ListTile(
-              title: Text('Fecha: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}'),
+              title: Text(
+                  'Fecha: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}'),
               trailing: const Icon(Icons.calendar_today),
               onTap: () async {
                 final date = await showDatePicker(
@@ -157,7 +161,7 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
                 if (date != null) setState(() => _selectedDate = date);
               },
             ),
-            
+
             // Selector de hora de inicio
             ListTile(
               title: Text('Hora inicio: ${_startTime.format(context)}'),
@@ -170,7 +174,7 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
                 if (time != null) setState(() => _startTime = time);
               },
             ),
-            
+
             // Selector de hora de fin
             ListTile(
               title: Text('Hora fin: ${_endTime.format(context)}'),
@@ -184,16 +188,17 @@ class _EditEventReminderScreenState extends State<EditEventReminderScreen> {
                   final start = _startTime.hour * 60 + _startTime.minute;
                   final end = time.hour * 60 + time.minute;
                   if (end < start) {
-                    _showErrorDialog('La hora de fin no puede ser anterior a la de inicio');
+                    _showErrorDialog(
+                        'La hora de fin no puede ser anterior a la de inicio');
                   } else {
                     setState(() => _endTime = time);
                   }
                 }
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Descripción
             TextFormField(
               controller: _descriptionController,

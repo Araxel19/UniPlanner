@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../core/db/sqlite_helper.dart';
+import '../../core/db/firestore_service.dart';
 
 class EditarCurso extends StatefulWidget {
-  final int courseId;
+  final String courseId;
   final String courseName;
   final String courseLabel;
 
@@ -20,7 +20,7 @@ class EditarCurso extends StatefulWidget {
 class EditarCursoState extends State<EditarCurso> {
   final _nameController = TextEditingController();
   final _labelController = TextEditingController();
-  final SQLiteHelper _dbHelper = SQLiteHelper();
+  final FirestoreService _firestoreService = FirestoreService();
   bool _isLoading = false;
 
   @override
@@ -38,31 +38,21 @@ class EditarCursoState extends State<EditarCurso> {
   }
 
   Future<void> _saveChanges() async {
-    if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('El nombre del curso es requerido')),
-      );
-      return;
-    }
+    if (_nameController.text.isEmpty) return;
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      await _dbHelper.updateCourse(
+      await _firestoreService.updateCourse(
         widget.courseId,
         _nameController.text,
-        _labelController.text,
+        label: _labelController.text,
       );
 
       if (!mounted) return;
-      Navigator.pop(context, true); // Retornar true para indicar éxito
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar: ${e.toString()}')),
-      );
+      Navigator.pop(context, true);
     } finally {
       if (!mounted) return;
       setState(() {
@@ -76,7 +66,8 @@ class EditarCursoState extends State<EditarCurso> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirmar eliminación'),
-        content: const Text('¿Estás seguro de que quieres eliminar este curso? Todas las notas asociadas también se eliminarán.'),
+        content:
+            const Text('¿Estás seguro de que quieres eliminar este curso?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -96,14 +87,9 @@ class EditarCursoState extends State<EditarCurso> {
       });
 
       try {
-        await _dbHelper.deleteCourse(widget.courseId);
+        await _firestoreService.deleteCourse(widget.courseId);
         if (!mounted) return;
-        Navigator.pop(context, true); // Retornar true para indicar éxito
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al eliminar: ${e.toString()}')),
-        );
+        Navigator.pop(context, true);
       } finally {
         if (!mounted) return;
         setState(() {

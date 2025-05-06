@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../core/db/sqlite_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddTaskReminderScreen extends StatefulWidget {
-  final int userId;
+  final String userId; // Cambiado a String
   final String defaultList;
   final List<String> availableLists;
 
@@ -23,13 +23,11 @@ class _AddTaskReminderScreenState extends State<AddTaskReminderScreen> {
   final TextEditingController _descriptionController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
-  final SQLiteHelper _dbHelper = SQLiteHelper();
   late String _selectedList;
 
   @override
   void initState() {
     super.initState();
-    // Asegúrate de que la lista predeterminada exista en las disponibles
     _selectedList = widget.availableLists.contains(widget.defaultList)
         ? widget.defaultList
         : widget.availableLists.isNotEmpty
@@ -70,14 +68,19 @@ class _AddTaskReminderScreenState extends State<AddTaskReminderScreen> {
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
-      await _dbHelper.addTask(
-        _titleController.text,
-        formattedDate,
-        formattedTime,
-        _descriptionController.text,
-        _selectedList,
-        widget.userId,
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('tasks')
+          .add({
+        'title': _titleController.text,
+        'dueDate': formattedDate,
+        'dueTime': formattedTime,
+        'description': _descriptionController.text,
+        'listName': _selectedList,
+        'isCompleted': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

@@ -1,13 +1,15 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/theme_provider.dart';
 import '../../shared_widgets/general/configuracion_menu_item.dart';
 import '../home/home_screen.dart';
-import '../../core/db/sqlite_helper.dart';
 import '../../shared_widgets/general/app_routes.dart';
+import 'dart:async';
 
 class ConfiguracionScreen extends StatefulWidget {
   const ConfiguracionScreen({Key? key}) : super(key: key);
@@ -20,9 +22,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   String _userName = '';
   File? _userImage;
   String _selectedEmoji = '👤';
-  int? _userId;
   final ImagePicker _picker = ImagePicker();
-  final SQLiteHelper _dbHelper = SQLiteHelper();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  String _lastLoginStatus = 'Cargando...';
+  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
 
   final List<String> predefinedAvatars = [
     '😀',
@@ -47,77 +51,235 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadThemePreference();
+    _userDataSubscription?.cancel();
+  }
+
+  Future<void> _loadThemePreference() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    if (userDoc.exists) {
+      final themePreference = userDoc.data()?['themePreference'];
+      if (themePreference != null) {
+        final themeProvider =
+            Provider.of<ThemeProvider>(context, listen: false);
+        themeProvider.toggleTheme(themePreference == 'dark');
+      }
+    }
+  }
+
+  // Convertir imagen a Base64
+  Future<String?> _imageToBase64(File? image) async {
+    if (image == null) return null;
+    final bytes = await image.readAsBytes();
+    return base64Encode(bytes);
+  }
+
+  // Convertir Base64 a imagen
+  File? _base64ToImage(String? base64String) {
+    if (base64String == null) return null;
+    try {
+      final bytes = base64Decode(base64String);
+      final tempDir = Directory.systemTemp;
+      final file = File(
+          '${tempDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.png');
+      file.writeAsBytesSync(bytes);
+      return file;
+    } catch (e) {
+      debugPrint('Error al convertir Base64 a imagen: $e');
+      return null;
+    }
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    try {
+      // Cancelar todos los streams antes de cerrar sesión
+      _userDataSubscription?.cancel();
+
+      await _auth.signOut();
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRoutes.login,
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cerrar sesión: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userName = prefs.getString('username') ?? 'username';
-      _userId = prefs.getInt('userId');
-    });
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-    if (_userId != null) {
-      await _loadUserAvatar();
-    }
-  }
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
 
-  Future<void> _loadUserAvatar() async {
-    if (_userId == null) return;
+    if (userDoc.exists) {
+      final data = userDoc.data();
 
-    final avatar = await _dbHelper.getUserAvatar(_userId!);
-    if (avatar == null) return;
+      setState(() {
+        _userName = data?['displayName'] ?? 'Usuario';
+        _selectedEmoji = data?['avatarEmoji'] ?? '👤';
+      });
 
-    setState(() {
-      _selectedEmoji = avatar['emoji'] ?? '👤';
-      final imagePath = avatar['imagePath'];
-      if (imagePath != null && File(imagePath).existsSync()) {
-        _userImage = File(imagePath);
+      // Cargar imagen desde Base64 si existe
+      final imageBase64 = data?['avatarBase64'];
+      if (imageBase64 != null && imageBase64 is String) {
+        setState(() {
+          _userImage = _base64ToImage(imageBase64);
+        });
       }
-    });
+
+      // Calcular estado de actividad
+      final Timestamp? lastLoginTimestamp = data?['lastLogin'];
+      if (lastLoginTimestamp != null) {
+        final lastLogin = lastLoginTimestamp.toDate();
+        final diff = DateTime.now().difference(lastLogin);
+        String status;
+
+        if (diff.inMinutes < 1) {
+          status = 'Activo hace un momento';
+        } else if (diff.inMinutes < 60) {
+          status = 'Activo hace ${diff.inMinutes} min';
+        } else if (diff.inHours < 24) {
+          status = 'Activo hace ${diff.inHours} h';
+        } else {
+          status = 'Activo hace ${diff.inDays} d';
+        }
+
+        setState(() {
+          _lastLoginStatus = status;
+        });
+      }
+    }
   }
 
   Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null && _userId != null) {
-      await _saveImage(pickedFile.path);
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 80,
+    );
+
+    if (pickedFile != null) {
+      await _uploadImage(File(pickedFile.path));
     }
   }
 
-  Future<void> _saveImage(String imagePath) async {
-    if (_userId == null) return;
+  Future<void> _uploadImage(File image) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-    await _dbHelper.saveUserAvatar(
-      userId: _userId!,
-      imagePath: imagePath,
-      emoji: null, // Limpiar emoji al guardar imagen
-    );
+    try {
+      // Convertir a Base64
+      final base64Image = await _imageToBase64(image);
+      if (base64Image == null) return;
 
-    setState(() {
-      _userImage = File(imagePath);
-      _selectedEmoji = '👤';
-    });
+      // Verificar tamaño (Firestore limita documentos a 1MB)
+      if (base64Image.length > 900000) {
+        // ~900KB dejando espacio para otros campos
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('La imagen es demasiado grande (máx. ~900KB)')),
+        );
+        return;
+      }
+
+      setState(() => _userImage = image);
+
+      // Actualizar Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'avatarBase64': base64Image,
+        'avatarEmoji': null, // Limpiar emoji
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _selectedEmoji = '👤');
+    } catch (e) {
+      debugPrint('Error al subir imagen: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar avatar: $e')),
+      );
+    }
   }
 
   Future<void> _saveSelectedEmoji(String emoji) async {
-    if (_userId == null) return;
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-    await _dbHelper.saveUserAvatar(
-      userId: _userId!,
-      emoji: emoji,
-      imagePath: null, // Limpiar imagen al guardar emoji
-    );
+    try {
+      // Actualizar Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'avatarBase64': null,
+        'avatarEmoji': emoji,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-    setState(() {
-      _selectedEmoji = emoji;
-      _userImage = null;
-    });
+      setState(() {
+        _selectedEmoji = emoji;
+        _userImage = null;
+      });
+    } catch (e) {
+      debugPrint('Error al guardar emoji: $e');
+    }
+  }
+
+  Future<String> getLastLoginStatus(String userId) async {
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    if (!doc.exists) return 'Desconocido';
+
+    final Timestamp timestamp = doc['lastLogin'];
+    final DateTime lastLogin = timestamp.toDate();
+    final Duration diff = DateTime.now().difference(lastLogin);
+
+    if (diff.inMinutes < 1) {
+      return 'Activo hace un momento';
+    } else if (diff.inMinutes < 60) {
+      return 'Activo hace ${diff.inMinutes} min';
+    } else if (diff.inHours < 24) {
+      return 'Activo hace ${diff.inHours} h';
+    } else {
+      return 'Activo hace ${diff.inDays} d';
+    }
+  }
+
+  Future<void> _updateUsername(String newName) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      // Actualizar en Firebase Auth
+      await user.updateDisplayName(newName);
+
+      // Actualizar en Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'displayName': newName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _userName = newName);
+    } catch (e) {
+      debugPrint('Error al actualizar nombre: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar nombre: $e')),
+      );
+    }
   }
 
   Future<void> _showAvatarSelectionModal() async {
     await showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).cardColor,
-      isScrollControlled: true, // Esto evita el overflow
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -205,14 +367,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     );
   }
 
-  void _logout(BuildContext context) {
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      AppRoutes.login,
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -232,6 +386,32 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               _buildTabBar(theme),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton(BuildContext context, ThemeData theme) {
+    return Center(
+      child: ElevatedButton.icon(
+        onPressed: () async => await _logout(context),
+        icon: Icon(Icons.logout, color: theme.colorScheme.onPrimary),
+        label: Text(
+          'Cerrar sesión',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: theme.colorScheme.primary,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          elevation: 5,
+          shadowColor: theme.shadowColor.withOpacity(0.3),
         ),
       ),
     );
@@ -296,7 +476,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  'Active 5m ago',
+                  _lastLoginStatus,
                   style: theme.textTheme.bodySmall,
                 ),
               ],
@@ -373,8 +553,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           onTap: () async {
             final themeProvider =
                 Provider.of<ThemeProvider>(context, listen: false);
-            final prefs = await SharedPreferences.getInstance();
-            bool isDark = prefs.getBool('isDarkTheme') ?? false;
+            final user = _auth.currentUser;
+            if (user == null) return;
+
+            final userDoc =
+                await _firestore.collection('users').doc(user.uid).get();
+            bool isDark = userDoc.data()?['themePreference'] == 'dark';
 
             showDialog(
               context: context,
@@ -394,7 +578,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                               if (value != null) {
                                 setState(() => isDark = value);
                                 themeProvider.toggleTheme(value);
-                                await prefs.setBool('isDarkTheme', value);
+                                await _firestore
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .update({
+                                  'themePreference': value ? 'dark' : 'light',
+                                });
                                 Navigator.pop(context);
                               }
                             },
@@ -407,7 +596,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                               if (value != null) {
                                 setState(() => isDark = value);
                                 themeProvider.toggleTheme(value);
-                                await prefs.setBool('isDarkTheme', value);
+                                await _firestore
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .update({
+                                  'themePreference': value ? 'dark' : 'light',
+                                });
                                 Navigator.pop(context);
                               }
                             },
@@ -425,11 +619,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           icon: Icons.person_outline,
           title: 'Configuración de usuario',
           description: 'Usuario',
-          onTap: () async {
-            final prefs = await SharedPreferences.getInstance();
-            final userId = prefs.getInt('userId');
-            if (userId == null) return;
-
+          onTap: () {
             TextEditingController controller =
                 TextEditingController(text: _userName);
             showDialog(
@@ -448,14 +638,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     ),
                     TextButton(
                       onPressed: () async {
-                        final dbHelper = SQLiteHelper();
                         try {
-                          await prefs.setString('username', controller.text);
-                          await dbHelper.updateUsername(
-                              userId, controller.text);
-                          setState(() {
-                            _userName = controller.text;
-                          });
+                          await _updateUsername(controller.text);
                           Navigator.pop(context);
                         } catch (e) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -474,56 +658,30 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       ],
     );
   }
+}
 
-  Widget _buildLogoutButton(BuildContext context, ThemeData theme) {
-    return Center(
-      child: ElevatedButton.icon(
-        onPressed: () => _logout(context),
-        icon: Icon(Icons.logout, color: theme.colorScheme.onPrimary),
-        label: Text(
-          'Cerrar sesión',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.onPrimary,
-          ),
+Widget _buildTabBar(ThemeData theme) {
+  return Container(
+    decoration: BoxDecoration(
+      color: theme.cardColor,
+      boxShadow: [
+        BoxShadow(
+          color: theme.shadowColor.withOpacity(0.1),
+          blurRadius: 4,
+          offset: const Offset(0, 4),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: theme.colorScheme.primary,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          elevation: 5,
-          shadowColor: theme.shadowColor.withOpacity(0.3),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabBar(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Center(
-        child: Container(
-          width: 134,
-          height: 5,
-          decoration: BoxDecoration(
-            color: theme.primaryColorDark,
-            borderRadius: BorderRadius.circular(100),
-          ),
+      ],
+    ),
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    child: Center(
+      child: Container(
+        width: 134,
+        height: 5,
+        decoration: BoxDecoration(
+          color: theme.primaryColorDark,
+          borderRadius: BorderRadius.circular(100),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

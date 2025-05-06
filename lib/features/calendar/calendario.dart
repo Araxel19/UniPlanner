@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 import '../../shared_widgets/general/app_routes.dart';
-import '../../core/db/sqlite_helper.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 class Calendario extends StatefulWidget {
   const Calendario({Key? key}) : super(key: key);
 
   @override
+  // ignore: library_private_types_in_public_api
   _CalendarioState createState() => _CalendarioState();
 }
 
@@ -18,7 +20,10 @@ class _CalendarioState extends State<Calendario> {
   late DateTime _focusedDay;
   late DateTime _selectedDay;
   bool _isOptionsVisible = false;
-  int? _userId;
+  bool _isLoading = false;
+  String? _userId;
+  StreamSubscription? _eventsSubscription;
+  StreamSubscription? _tasksSubscription;
 
   @override
   void initState() {
@@ -32,45 +37,87 @@ class _CalendarioState extends State<Calendario> {
   }
 
   Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userId = prefs.getInt('userId');
-    });
-    return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && mounted) {
+      setState(() {
+        _userId = user.uid;
+      });
+      if (mounted) {
+        await _loadItemsForDay(_selectedDay);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _eventsSubscription?.cancel();
+    _tasksSubscription?.cancel();
     _selectedItems.dispose();
     super.dispose();
   }
 
   Future<void> _loadItemsForDay(DateTime day) async {
-    if (_userId == null) {
-      _selectedItems.value = [];
+    if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        _selectedItems.value = [];
+      }
       return;
     }
 
-    String formattedDate = DateFormat('yyyy-MM-dd').format(day);
-    final dbHelper = SQLiteHelper();
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      // Obtener eventos y tareas en paralelo
-      final results = await Future.wait([
-        dbHelper.getEventsForDay(formattedDate, userId: _userId),
-        dbHelper.getTasksForDay(formattedDate, userId: _userId),
-      ]);
+      String formattedDate = DateFormat('yyyy-MM-dd').format(day);
 
-      final eventsData = results[0];
-      final tasksData = results[1];
+      // Cancelar suscripciones anteriores
+      _eventsSubscription?.cancel();
+      _tasksSubscription?.cancel();
 
-      final userEvents = eventsData.map((e) => Event.fromMap(e)).toList();
-      final userTasks = tasksData.map((t) => Task.fromMap(t)).toList();
+      final eventsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .where('date', isEqualTo: formattedDate)
+          .get();
 
-      _selectedItems.value = [...userTasks, ...userEvents];
+      final tasksSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .where('dueDate', isEqualTo: formattedDate)
+          .get();
+
+      if (!mounted) return;
+
+      final eventsData = eventsSnapshot.docs.map((doc) {
+        return Event.fromMap({...doc.data(), 'id': doc.id});
+      }).toList();
+
+      final tasksData = tasksSnapshot.docs.map((doc) {
+        return Task.fromMap({...doc.data(), 'id': doc.id});
+      }).toList();
+
+      if (mounted) {
+        _selectedItems.value = [...tasksData, ...eventsData];
+      }
     } catch (e) {
-      _selectedItems.value = [];
       debugPrint('Error loading items: $e');
+      if (mounted) {
+        _selectedItems.value = [];
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -157,7 +204,7 @@ class _CalendarioState extends State<Calendario> {
             const Divider(height: 1),
             // Mostrar contenido solo cuando se haya cargado el userId
             _userId == null
-                ? Expanded(
+                ? const Expanded(
                     child: Center(
                       child: CircularProgressIndicator(),
                     ),
@@ -260,7 +307,8 @@ class _CalendarioState extends State<Calendario> {
   }
 
   Future<void> _navigateToAddEvent() async {
-    if (_userId == null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       _showLoginRequired();
       return;
     }
@@ -268,15 +316,17 @@ class _CalendarioState extends State<Calendario> {
     await AppRoutes.push(
       context,
       AppRoutes.addEvent,
-      arguments: _userId,
+      arguments: user.uid,
     );
 
-    // Recargar items después de volver
-    _loadItemsForDay(_selectedDay);
+    if (mounted) {
+      await _loadItemsForDay(_selectedDay);
+    }
   }
 
   Future<void> _navigateToAddTask() async {
-    if (_userId == null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       _showLoginRequired();
       return;
     }
@@ -284,10 +334,9 @@ class _CalendarioState extends State<Calendario> {
     await AppRoutes.push(
       context,
       AppRoutes.taskInput,
-      arguments: _userId,
+      arguments: user.uid, // Usar el UID de Firebase directamente
     );
 
-    // Recargar items después de volver
     _loadItemsForDay(_selectedDay);
   }
 
@@ -671,10 +720,20 @@ class _CalendarioState extends State<Calendario> {
 
   Future<void> _toggleTaskCompletion(Task task, BuildContext context) async {
     try {
-      final dbHelper = SQLiteHelper();
-      await dbHelper.updateTaskCompletion(task.id, !task.isCompleted);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-      // Actualización optimizada del estado
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .doc(task.id)
+          .update({
+        'isCompleted': !task.isCompleted,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Actualizar localmente
       setState(() {
         _selectedItems.value = _selectedItems.value.map((item) {
           if (item is Task && item.id == task.id) {
@@ -698,10 +757,18 @@ class _CalendarioState extends State<Calendario> {
     }
   }
 
-  Future<void> _deleteTask(int taskId, BuildContext context) async {
-    final dbHelper = SQLiteHelper();
+  Future<void> _deleteTask(String taskId, BuildContext context) async {
     try {
-      await dbHelper.deleteTask(taskId);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .doc(taskId)
+          .delete();
+
       Navigator.pop(context);
       _loadItemsForDay(_selectedDay);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -714,10 +781,18 @@ class _CalendarioState extends State<Calendario> {
     }
   }
 
-  Future<void> _deleteEvent(int eventId, BuildContext context) async {
-    final dbHelper = SQLiteHelper();
+  Future<void> _deleteEvent(String eventId, BuildContext context) async {
     try {
-      await dbHelper.deleteEvent(eventId);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(eventId)
+          .delete();
+
       Navigator.pop(context);
       _loadItemsForDay(_selectedDay);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -971,7 +1046,7 @@ class _CalendarioState extends State<Calendario> {
 }
 
 class Event {
-  final int id;
+  final String id; // Cambiado de int a String
   final String title;
   final String description;
   final String date;
@@ -989,7 +1064,7 @@ class Event {
 
   factory Event.fromMap(Map<String, dynamic> map) {
     return Event(
-      id: map['id'],
+      id: map['id'] ?? '', // Firestore usa IDs como strings
       title: map['title'],
       description: map['description'],
       date: map['date'],
@@ -1000,13 +1075,13 @@ class Event {
 }
 
 class Task {
-  final int id;
+  final String id; // Cambiado de int a String
   final String title;
   final String description;
   final String dueDate;
   final String dueTime;
   final bool isCompleted;
-  final String listName; // Añade este campo
+  final String listName;
 
   Task({
     required this.id,
@@ -1015,18 +1090,18 @@ class Task {
     required this.dueDate,
     required this.dueTime,
     required this.isCompleted,
-    this.listName = 'Ideas', // Valor por defecto
+    this.listName = 'Ideas',
   });
 
   factory Task.fromMap(Map<String, dynamic> map) {
     return Task(
-      id: map['id'],
+      id: map['id'] ?? '',
       title: map['title'],
       description: map['description'] ?? '',
       dueDate: map['dueDate'],
       dueTime: map['dueTime'] ?? '',
-      isCompleted: map['isCompleted'] == 1,
-      listName: map['listName'] ?? 'Ideas', // Mapea el listName
+      isCompleted: map['isCompleted'] ?? false, // Cambiado de 1/0 a bool
+      listName: map['listName'] ?? 'Ideas',
     );
   }
 }

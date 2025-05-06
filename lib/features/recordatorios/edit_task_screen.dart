@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../core/db/sqlite_helper.dart';
-import '../../shared_widgets/general/app_routes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class EditTaskReminderScreen extends StatefulWidget {
   final Map<String, dynamic> task;
-  final int userId;
+  final String userId;
   final List<String> availableLists;
 
   const EditTaskReminderScreen({
@@ -24,7 +23,6 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
   late TextEditingController _descriptionController;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
-  final SQLiteHelper _dbHelper = SQLiteHelper();
 
   @override
   void initState() {
@@ -61,15 +59,19 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
-      await _dbHelper.updateTask(
-        widget.task['id'],
-        _titleController.text,
-        formattedDate,
-        formattedTime,
-        _descriptionController.text,
-        false,
-        widget.task['listName'] ?? 'Ideas',
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('tasks')
+          .doc(widget.task['id'])
+          .update({
+        'title': _titleController.text,
+        'dueDate': formattedDate,
+        'dueTime': formattedTime,
+        'description': _descriptionController.text,
+        'listName': widget.task['listName'] ?? 'Ideas',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pop(context, true);

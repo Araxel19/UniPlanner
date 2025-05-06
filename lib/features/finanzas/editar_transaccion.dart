@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../core/db/sqlite_helper.dart';
+import '../../core/db/firebase_finanzas_helper.dart';
 
 class EditarTransaccion extends StatefulWidget {
   final Map<String, dynamic> transaction;
 
-  const EditarTransaccion({Key? key, required this.transaction}) : super(key: key);
+  const EditarTransaccion({Key? key, required this.transaction})
+      : super(key: key);
 
   @override
   State<EditarTransaccion> createState() => _EditarTransaccionState();
@@ -17,6 +17,7 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
   final TextEditingController _amountController = TextEditingController();
   late DateTime _selectedDate;
   String? _selectedCategory;
+  final FirebaseFinanzasHelper _firebaseHelper = FirebaseFinanzasHelper();
 
   @override
   void initState() {
@@ -25,7 +26,7 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
     _descriptionController.text = widget.transaction['description'];
     _amountController.text = widget.transaction['amount'].toString();
     _selectedCategory = widget.transaction['category'];
-    
+
     final dateParts = widget.transaction['date'].toString().split('-');
     final timeParts = widget.transaction['time'].toString().split(':');
     _selectedDate = DateTime(
@@ -61,7 +62,6 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final db = Provider.of<SQLiteHelper>(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -121,8 +121,16 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
                 ),
               ),
               items: [
-                'Comida', 'Transporte', 'Compras', 'Salud', 'Entretenimiento',
-                'Salario', 'Ventas', 'Inversiones', 'Regalos', 'Préstamos'
+                'Comida',
+                'Transporte',
+                'Compras',
+                'Salud',
+                'Entretenimiento',
+                'Salario',
+                'Ventas',
+                'Inversiones',
+                'Regalos',
+                'Préstamos'
               ].map((String value) {
                 return DropdownMenuItem<String>(
                   value: value,
@@ -186,8 +194,8 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
     }
 
     try {
-      await Provider.of<SQLiteHelper>(context, listen: false).updateTransaction(
-        id: widget.transaction['id'],
+      await _firebaseHelper.updateTransaction(
+        transactionId: widget.transaction['id'],
         amount: double.parse(_amountController.text),
         description: _descriptionController.text,
         category: _selectedCategory!,
@@ -195,7 +203,7 @@ class _EditarTransaccionState extends State<EditarTransaccion> {
         date: _selectedDate,
       );
 
-      Navigator.pop(context, true); // Indica que se actualizó la transacción
+      Navigator.pop(context, true);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al actualizar: $e')),

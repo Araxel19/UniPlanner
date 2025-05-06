@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/db/sqlite_helper.dart';
-import 'package:provider/provider.dart';
+import '../../core/db/firebase_finanzas_helper.dart';
 
 class AgregarMovimientos extends StatefulWidget {
   const AgregarMovimientos({Key? key}) : super(key: key);
@@ -17,21 +15,7 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   final TextEditingController _amountController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   String? _selectedCategory;
-  Map<String, dynamic>? _selectedCategoryData;
-  int? _userId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserId();
-  }
-
-  Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userId = prefs.getInt('userId');
-    });
-  }
+  final FirebaseFinanzasHelper _firebaseHelper = FirebaseFinanzasHelper();
 
   @override
   void dispose() {
@@ -44,8 +28,35 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
     setState(() {
       _isExpenseSelected = isExpense;
       _selectedCategory = null;
-      _selectedCategoryData = null;
     });
+  }
+
+  Future<void> _guardarMovimiento() async {
+    if (_amountController.text.isEmpty || _selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor complete todos los campos requeridos'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _firebaseHelper.addTransaction(
+        amount: double.parse(_amountController.text),
+        description: _descriptionController.text,
+        category: _selectedCategory!,
+        isIncome: !_isExpenseSelected,
+        date: _selectedDate,
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al guardar: ${e.toString()}'),
+        ),
+      );
+    }
   }
 
   Future<void> _selectDate() async {
@@ -65,7 +76,21 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final db = Provider.of<SQLiteHelper>(context);
+    final categories = _isExpenseSelected
+        ? [
+            {'name': 'Comida', 'icon': Icons.fastfood},
+            {'name': 'Transporte', 'icon': Icons.directions_car},
+            {'name': 'Compras', 'icon': Icons.shopping_cart},
+            {'name': 'Salud', 'icon': Icons.health_and_safety},
+            {'name': 'Entretenimiento', 'icon': Icons.sports_esports},
+          ]
+        : [
+            {'name': 'Salario', 'icon': Icons.work},
+            {'name': 'Ventas', 'icon': Icons.sell},
+            {'name': 'Inversiones', 'icon': Icons.trending_up},
+            {'name': 'Regalos', 'icon': Icons.card_giftcard},
+            {'name': 'Préstamos', 'icon': Icons.money},
+          ];
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -110,99 +135,71 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
               keyboardType: TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 24),
-            // Selector de categoría mejorado con dropdown_button2
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: db.getCategoriesByType(
-                isIncome: !_isExpenseSelected,
-                userId: _userId ?? 0,
-              ),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return const Text('Error al cargar categorías');
-                }
-
-                final categories = snapshot.data ?? [];
-                if (categories.isEmpty) {
-                  return const Text('No hay categorías disponibles');
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Categoría', style: TextStyle(fontSize: 12)),
-                    const SizedBox(height: 4),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton2<String>(
-                        value: _selectedCategory,
-                        hint: const Text('Seleccione una categoría'),
-                        items: categories.map((category) {
-                          return DropdownMenuItem<String>(
-                            value: category['name'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  IconData(
-                                    category['iconCode'],
-                                    fontFamily: 'MaterialIcons',
-                                  ),
-                                  size: 20,
-                                  color: theme.primaryColor,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(category['name']),
-                              ],
+            // Selector de categoría
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Categoría', style: TextStyle(fontSize: 12)),
+                const SizedBox(height: 4),
+                DropdownButtonHideUnderline(
+                  child: DropdownButton2<String>(
+                    value: _selectedCategory,
+                    hint: const Text('Seleccione una categoría'),
+                    items: categories.map((category) {
+                      return DropdownMenuItem<String>(
+                        value: category['name'] as String,
+                        child: Row(
+                          children: [
+                            Icon(
+                              category['icon'] as IconData,
+                              size: 20,
+                              color: theme.primaryColor,
                             ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _selectedCategory = value;
-                              _selectedCategoryData = categories.firstWhere(
-                                (c) => c['name'] == value,
-                                orElse: () => {},
-                              );
-                            });
-                          }
-                        },
-                        buttonStyleData: ButtonStyleData(
-                          height: 50,
-                          width: double.infinity,
-                          padding: const EdgeInsets.only(left: 14, right: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: theme.dividerColor,
-                            ),
-                          ),
+                            const SizedBox(width: 12),
+                            Text(category['name'] as String),
+                          ],
                         ),
-                        dropdownStyleData: DropdownStyleData(
-                          maxHeight: 250,
-                          width: MediaQuery.of(context).size.width - 32,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: theme.cardColor,
-                          ),
-                          offset: const Offset(0, -5),
-                          scrollbarTheme: ScrollbarThemeData(
-                            radius: const Radius.circular(40),
-                            thickness: MaterialStateProperty.all<double>(6),
-                            thumbVisibility: MaterialStateProperty.all<bool>(true),
-                          ),
-                        ),
-                        menuItemStyleData: const MenuItemStyleData(
-                          height: 40,
-                          padding: EdgeInsets.only(left: 14, right: 14),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _selectedCategory = value;
+                        });
+                      }
+                    },
+                    buttonStyleData: ButtonStyleData(
+                      height: 50,
+                      width: double.infinity,
+                      padding: const EdgeInsets.only(left: 14, right: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.dividerColor,
                         ),
                       ),
                     ),
-                  ],
-                );
-              },
+                    dropdownStyleData: DropdownStyleData(
+                      maxHeight: 250,
+                      width: MediaQuery.of(context).size.width - 32,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: theme.cardColor,
+                      ),
+                      offset: const Offset(0, -5),
+                      scrollbarTheme: ScrollbarThemeData(
+                        radius: const Radius.circular(40),
+                        thickness: MaterialStateProperty.all<double>(6),
+                        thumbVisibility: MaterialStateProperty.all<bool>(true),
+                      ),
+                    ),
+                    menuItemStyleData: const MenuItemStyleData(
+                      height: 40,
+                      padding: EdgeInsets.only(left: 14, right: 14),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             // Selector de fecha
@@ -243,44 +240,7 @@ class _AgregarMovimientosState extends State<AgregarMovimientos> {
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () async {
-                      if (_userId == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Debes iniciar sesión para agregar movimientos'),
-                          ),
-                        );
-                        return;
-                      }
-                      if (_amountController.text.isEmpty ||
-                          _selectedCategory == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                'Por favor complete todos los campos requeridos'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      try {
-                        await db.addTransaction(
-                          amount: double.parse(_amountController.text),
-                          description: _descriptionController.text,
-                          category: _selectedCategory!,
-                          isIncome: !_isExpenseSelected,
-                          date: _selectedDate,
-                          userId: _userId!,
-                        );
-                        Navigator.pop(context);
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error al guardar: ${e.toString()}'),
-                          ),
-                        );
-                      }
-                    },
+                    onPressed: _guardarMovimiento,
                     child: const Text('Guardar'),
                   ),
                 ),

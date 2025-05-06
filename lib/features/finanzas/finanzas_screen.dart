@@ -1,11 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/db/sqlite_helper.dart';
+import '../../core/db/firebase_finanzas_helper.dart';
 import 'agregar_movimientos.dart';
 import 'transaction_details_screen.dart';
-import 'editar_transaccion.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 
 class FinanzasScreen extends StatefulWidget {
@@ -16,27 +14,17 @@ class FinanzasScreen extends StatefulWidget {
 }
 
 class _FinanzasScreenState extends State<FinanzasScreen> {
-  final ScrollController _scrollController = ScrollController();
   String _currentPeriod = 'Mes';
   String _transactionFilter = 'Todos';
   DateTime _selectedDate = DateTime.now();
   DateTime? _startDate;
   DateTime? _endDate;
-  int? _userId;
+  final FirebaseFinanzasHelper _firebaseHelper = FirebaseFinanzasHelper();
 
   @override
   void initState() {
     super.initState();
-    _loadUserId().then((_) {
-      _updateDateRange();
-    });
-  }
-
-  Future<void> _loadUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userId = prefs.getInt('userId');
-    });
+    _updateDateRange();
   }
 
   void _updateDateRange() {
@@ -92,7 +80,6 @@ class _FinanzasScreenState extends State<FinanzasScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final db = Provider.of<SQLiteHelper>(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -108,36 +95,34 @@ class _FinanzasScreenState extends State<FinanzasScreen> {
                     bottomLeft: Radius.circular(16),
                     bottomRight: Radius.circular(16)),
               ),
-              child: _userId == null
-                  ? const CircularProgressIndicator()
-                  : FutureBuilder<double>(
-                      future: db.getBalance(_userId!),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const CircularProgressIndicator();
-                        }
-                        final balance = snapshot.data ?? 0;
-                        return Column(
-                          children: [
-                            Text(
-                              'Total',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.textTheme.titleMedium?.color
-                                    ?.withOpacity(0.7),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${balance >= 0 ? '+' : ''}\$${balance.toStringAsFixed(2)} COL\$',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: balance >= 0 ? Colors.green : Colors.red,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+              child: FutureBuilder<double>(
+                future: _firebaseHelper.getBalance(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  final balance = snapshot.data ?? 0;
+                  return Column(
+                    children: [
+                      Text(
+                        'Total',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.textTheme.titleMedium?.color
+                              ?.withOpacity(0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${balance >= 0 ? '+' : ''}\$${balance.toStringAsFixed(2)} COL\$',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: balance >= 0 ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
 
             // Selector de período
@@ -236,158 +221,216 @@ class _FinanzasScreenState extends State<FinanzasScreen> {
             // Balance del período con tamaño reducido
             Padding(
               padding: const EdgeInsets.all(12),
-              child: _userId == null
-                  ? const SizedBox.shrink()
-                  : FutureBuilder<List<Map<String, dynamic>>>(
-                      future: db.getTransactionsByPeriod(
-                        period: _currentPeriod,
-                        userId: _userId!,
-                        startDate: _startDate,
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _firebaseHelper.getTransactionsStream(
+                  period: _currentPeriod,
+                  startDate: _startDate,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox.shrink();
+                  }
+
+                  if (snapshot.hasError) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final transactions = snapshot.data?.docs ?? [];
+
+                  // Filtrar según selección
+                  List<DocumentSnapshot> filteredTransactions = transactions;
+                  if (_transactionFilter == 'Ingresos') {
+                    filteredTransactions = transactions
+                        .where((t) =>
+                            (t.data() as Map<String, dynamic>)['isIncome'] ==
+                            true)
+                        .toList();
+                  } else if (_transactionFilter == 'Gastos') {
+                    filteredTransactions = transactions
+                        .where((t) =>
+                            (t.data() as Map<String, dynamic>)['isIncome'] !=
+                            true)
+                        .toList();
+                  }
+
+                  // Calcular total del período
+                  final periodTotal =
+                      filteredTransactions.fold<double>(0, (sum, t) {
+                    final data = t.data() as Map<String, dynamic>;
+                    final amount = data['amount'] as double;
+                    return data['isIncome'] ? sum + amount : sum - amount;
+                  });
+
+                  return Column(
+                    children: [
+                      Text(
+                        'Balance del período',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.textTheme.bodyMedium?.color
+                              ?.withOpacity(0.7),
+                        ),
                       ),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const SizedBox.shrink();
-                        }
-
-                        List<Map<String, dynamic>> transactions =
-                            snapshot.data ?? [];
-
-                        // Filtrar según selección
-                        if (_transactionFilter == 'Ingresos') {
-                          transactions = transactions
-                              .where((t) => t['isIncome'] == 1)
-                              .toList();
-                        } else if (_transactionFilter == 'Gastos') {
-                          transactions = transactions
-                              .where((t) => t['isIncome'] != 1)
-                              .toList();
-                        }
-
-                        // Calcular total del período
-                        final periodTotal = transactions.fold<double>(
-                            0, (sum, t) {
-                          final amount = t['amount'] as double;
-                          return t['isIncome'] == 1 ? sum + amount : sum - amount;
-                        });
-
-                        return Column(
-                          children: [
-                            Text(
-                              'Balance del período',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.textTheme.bodyMedium?.color
-                                    ?.withOpacity(0.7),
-                              ),
-                            ),
-                            Text(
-                              '${periodTotal >= 0 ? '+' : ''}\$${periodTotal.toStringAsFixed(2)} COL\$',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color:
-                                    periodTotal >= 0 ? Colors.green : Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                      Text(
+                        '${periodTotal >= 0 ? '+' : ''}\$${periodTotal.toStringAsFixed(2)} COL\$',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: periodTotal >= 0 ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
 
             // Lista de transacciones
             Expanded(
-              child: _userId == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : FutureBuilder<List<Map<String, dynamic>>>(
-                      future: db.getTransactionsByPeriod(
-                        period: _currentPeriod,
-                        userId: _userId!,
-                        startDate: _startDate,
-                      ),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _firebaseHelper.getTransactionsStream(
+                  period: _currentPeriod,
+                  startDate: _startDate,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                        if (snapshot.hasError) {
-                          return Center(child: Text('Error al cargar datos'));
-                        }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error al cargar datos'));
+                  }
 
-                        List<Map<String, dynamic>> transactions =
-                            snapshot.data ?? [];
+                  final transactions = snapshot.data?.docs ?? [];
 
-                        // Filtrar según selección
-                        if (_transactionFilter == 'Ingresos') {
-                          transactions = transactions
-                              .where((t) => t['isIncome'] == 1)
-                              .toList();
-                        } else if (_transactionFilter == 'Gastos') {
-                          transactions = transactions
-                              .where((t) => t['isIncome'] != 1)
-                              .toList();
-                        }
+                  // Filtrar según selección
+                  List<DocumentSnapshot> filteredTransactions = transactions;
+                  if (_transactionFilter == 'Ingresos') {
+                    filteredTransactions = transactions
+                        .where((t) =>
+                            (t.data() as Map<String, dynamic>)['isIncome'] ==
+                            true)
+                        .toList();
+                  } else if (_transactionFilter == 'Gastos') {
+                    filteredTransactions = transactions
+                        .where((t) =>
+                            (t.data() as Map<String, dynamic>)['isIncome'] !=
+                            true)
+                        .toList();
+                  }
 
-                        return transactions.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'No hay transacciones',
-                                  style: theme.textTheme.bodyLarge,
+                  return filteredTransactions.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No hay transacciones',
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        )
+                      : // Reemplaza el ListTile dentro del ListView.builder con este código:
+                      ListView.builder(
+                          itemCount: filteredTransactions.length,
+                          itemBuilder: (context, index) {
+                            final t = filteredTransactions[index];
+                            final data = t.data() as Map<String, dynamic>;
+                            final hasDescription =
+                                data['description'] != null &&
+                                    data['description'].toString().isNotEmpty;
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 4),
+                              child: ListTile(
+                                leading: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: data['isIncome']
+                                        ? Colors.green.withOpacity(0.2)
+                                        : Colors.red.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    _getIconForCategory(data['category']),
+                                    color: data['isIncome']
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
                                 ),
-                              )
-                            : ListView.builder(
-                                itemCount: transactions.length,
-                                itemBuilder: (context, index) {
-                                  final t = transactions[index];
-                                  return Card(
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 4),
-                                    child: ListTile(
-                                      leading: Icon(
-                                        _getIconForCategory(t['category']),
-                                        color: t['isIncome'] == 1
-                                            ? Colors.green
-                                            : Colors.red,
+                                title: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      data['category'],
+                                      style:
+                                          theme.textTheme.bodyLarge?.copyWith(
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                      title: Text(t['description']),
-                                      subtitle: Text(t['category']),
-                                      trailing: Text(
-                                        '${t['isIncome'] == 1 ? '+' : '-'}\$${t['amount'].toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          color: t['isIncome'] == 1
-                                              ? Colors.green
-                                              : Colors.red,
-                                          fontWeight: FontWeight.bold,
+                                    ),
+                                    if (hasDescription)
+                                      Text(
+                                        data['description'],
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: theme
+                                              .textTheme.bodyMedium?.color
+                                              ?.withOpacity(0.7),
                                         ),
                                       ),
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                TransactionDetailsScreen(
-                                                    transaction: t),
-                                          ),
-                                        );
-                                      },
+                                  ],
+                                ),
+                                trailing: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${data['isIncome'] ? '+' : '-'}\$${data['amount'].toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        color: data['isIncome']
+                                            ? Colors.green
+                                            : Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('dd/MM').format(
+                                          (data['date'] as Timestamp).toDate()),
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.textTheme.bodySmall?.color
+                                            ?.withOpacity(0.5),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          TransactionDetailsScreen(
+                                        transaction: {
+                                          'id': t.id,
+                                          'amount': data['amount'],
+                                          'description': data['description'],
+                                          'category': data['category'],
+                                          'isIncome': data['isIncome'],
+                                          'date': (data['date'] as Timestamp)
+                                              .toDate(),
+                                        },
+                                      ),
                                     ),
                                   );
                                 },
-                              );
-                      },
-                    ),
+                              ),
+                            );
+                          },
+                        );
+                },
+              ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          if (_userId == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Debes iniciar sesión para agregar movimientos'),
-              ),
-            );
-            return;
-          }
           Navigator.push(
             context,
             MaterialPageRoute(

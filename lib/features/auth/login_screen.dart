@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/db/sqlite_helper.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../../shared_widgets/general/app_routes.dart';
+import 'package:uniplanner/providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,8 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
 
-  final SQLiteHelper _dbHelper = SQLiteHelper();
-
   void _handleLogin() async {
     FocusScope.of(context).unfocus();
 
@@ -25,23 +23,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim().toLowerCase();
       final password = _passwordController.text;
 
-      bool isLoggedIn = await _dbHelper.loginUser(email, password);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.login(email, password);
 
-      if (isLoggedIn) {
-        final user = await _dbHelper.getUserByEmail(email);
-
-        if (user != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('userEmail', email);
-          await prefs.setString('username', user['username']);
-          await prefs.setInt('userId', user['id']);
-
-          print('Usuario logueado - ID: ${user['id']}');
-
-          Navigator.pushReplacementNamed(context, AppRoutes.home);
-        }
-      } else {
-        _showTopSnackBar('Credenciales incorrectas');
+      if (authProvider.user != null && authProvider.errorMessage == null) {
+        Navigator.pushReplacementNamed(context, AppRoutes.home);
+      } else if (authProvider.errorMessage != null) {
+        _showTopSnackBar(authProvider.errorMessage!);
       }
     }
   }
@@ -133,14 +121,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: _handleLogin,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
                               ),
                               child: const Text('Continuar'),
                             ),
                           ),
                           const SizedBox(height: 16),
                           TextButton(
-                            onPressed: () => Navigator.pushNamed(context, AppRoutes.register),
+                            onPressed: () => Navigator.pushNamed(
+                                context, AppRoutes.register),
                             child: const Text('Crear cuenta nueva'),
                           ),
                         ],
