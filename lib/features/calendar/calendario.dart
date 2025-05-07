@@ -15,7 +15,7 @@ class Calendario extends StatefulWidget {
   _CalendarioState createState() => _CalendarioState();
 }
 
-class _CalendarioState extends State<Calendario> {
+class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
   late final ValueNotifier<List<dynamic>> _selectedItems;
   late DateTime _focusedDay;
   late DateTime _selectedDay;
@@ -24,6 +24,9 @@ class _CalendarioState extends State<Calendario> {
   String? _userId;
   StreamSubscription? _eventsSubscription;
   StreamSubscription? _tasksSubscription;
+  CalendarFormat _calendarFormat = CalendarFormat.month;
+  late AnimationController _fabAnimationController;
+  late Animation<double> _fabAnimation;
 
   @override
   void initState() {
@@ -31,9 +34,31 @@ class _CalendarioState extends State<Calendario> {
     _focusedDay = DateTime.now();
     _selectedDay = _focusedDay;
     _selectedItems = ValueNotifier<List<dynamic>>([]);
+
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _fabAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _fabAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
     _loadUserId().then((_) {
       _loadItemsForDay(_selectedDay);
     });
+  }
+
+  @override
+  void dispose() {
+    _eventsSubscription?.cancel();
+    _tasksSubscription?.cancel();
+    _selectedItems.dispose();
+    _fabAnimationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserId() async {
@@ -46,14 +71,6 @@ class _CalendarioState extends State<Calendario> {
         await _loadItemsForDay(_selectedDay);
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _eventsSubscription?.cancel();
-    _tasksSubscription?.cancel();
-    _selectedItems.dispose();
-    super.dispose();
   }
 
   Future<void> _loadItemsForDay(DateTime day) async {
@@ -123,10 +140,12 @@ class _CalendarioState extends State<Calendario> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldColor = Theme.of(context).colorScheme.surface;
-    final textColor = Theme.of(context).colorScheme.onSurface;
-    final iconColor = Theme.of(context).iconTheme.color ?? textColor;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scaffoldColor = theme.colorScheme.surface;
+    final textColor = theme.colorScheme.onSurface;
+    final iconColor = theme.iconTheme.color ?? textColor;
+    final primaryColor = theme.colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
@@ -141,6 +160,21 @@ class _CalendarioState extends State<Calendario> {
         backgroundColor: scaffoldColor,
         elevation: 0,
         iconTheme: IconThemeData(color: iconColor),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.calendar_view_month),
+            onPressed: () {
+              setState(() {
+                _calendarFormat = _calendarFormat == CalendarFormat.month
+                    ? CalendarFormat.week
+                    : CalendarFormat.month;
+              });
+            },
+            tooltip: _calendarFormat == CalendarFormat.month
+                ? 'Vista semanal'
+                : 'Vista mensual',
+          ),
+        ],
       ),
       backgroundColor: scaffoldColor,
       floatingActionButton: _buildFloatingActionButton(),
@@ -149,7 +183,7 @@ class _CalendarioState extends State<Calendario> {
       body: SafeArea(
         child: Column(
           children: [
-            // Calendario más compacto
+            // Calendario mejorado
             Container(
               margin:
                   const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -168,6 +202,10 @@ class _CalendarioState extends State<Calendario> {
                     firstDay: DateTime(2020),
                     lastDay: DateTime(2030),
                     focusedDay: _focusedDay,
+                    calendarFormat: _calendarFormat,
+                    onFormatChanged: (format) {
+                      setState(() => _calendarFormat = format);
+                    },
                     selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
                     onDaySelected: (selectedDay, focusedDay) {
                       setState(() {
@@ -178,31 +216,36 @@ class _CalendarioState extends State<Calendario> {
                     },
                     calendarStyle: CalendarStyle(
                       selectedDecoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFFB69DF8)
-                            : const Color(0xFF6750A4),
+                        color: primaryColor,
                         shape: BoxShape.circle,
                       ),
                       todayDecoration: BoxDecoration(
                         color: isDark
                             ? const Color(0xFF3E3A47)
-                            : const Color(0xFFD0BCFF),
+                            : primaryColor.withOpacity(0.3),
                         shape: BoxShape.circle,
                       ),
                       defaultTextStyle:
                           TextStyle(color: textColor, fontSize: 12),
                       weekendTextStyle: TextStyle(color: textColor),
                       outsideDaysVisible: false,
+                      markerDecoration: BoxDecoration(
+                        color: primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      markersAlignment: Alignment.bottomCenter,
+                      markersAutoAligned: false,
                     ),
                     headerVisible: false,
                     daysOfWeekHeight: 28,
                     rowHeight: 36,
+                    eventLoader: (day) =>
+                        [], // Puedes implementar esto para mostrar eventos en el calendario
                   ),
                 ],
               ),
             ),
             const Divider(height: 1),
-            // Mostrar contenido solo cuando se haya cargado el userId
             _userId == null
                 ? const Expanded(
                     child: Center(
@@ -484,90 +527,159 @@ class _CalendarioState extends State<Calendario> {
   }
 
   void _showEventDetails(Event event, BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final surfaceColor = Theme.of(context).colorScheme.surface;
-    final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
+    final surfaceColor = theme.colorScheme.surface;
+    final onSurfaceColor = theme.colorScheme.onSurface;
+    final cardColor = isDark ? Colors.grey[900] : Colors.grey[100];
 
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        elevation: 8,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.all(20),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 500),
           decoration: BoxDecoration(
             color: surfaceColor,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    event.title,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.edit),
-                    color: primaryColor,
-                    onPressed: () => _editEvent(event),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Sección de detalles
+              // Header con degradado
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[900] : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      primaryColor.withOpacity(0.8),
+                      primaryColor,
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
                 ),
-                child: Column(
+                child: Row(
                   children: [
-                    _buildDetailRow(
-                        Icons.description, event.description, onSurfaceColor),
-                    const Divider(height: 24),
-                    _buildDetailRow(
-                        Icons.calendar_today, event.date, onSurfaceColor),
-                    const Divider(height: 24),
-                    _buildDetailRow(
-                        Icons.access_time,
-                        '${event.startTime} - ${event.endTime}',
-                        onSurfaceColor),
+                    const Icon(Icons.event, color: Colors.white, size: 30),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        event.title,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.white),
+                      onPressed: () => _editEvent(event),
+                    ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cerrar'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                      onPressed: () => _deleteEvent(event.id, context),
-                      child: const Text('Eliminar',
-                          style: TextStyle(color: Colors.red))),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _editEvent(event),
-                    child: const Text('Editar'),
-                  ),
-                ],
+              // Contenido
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Sección de detalles
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildDetailCardRow(
+                            icon: Icons.description,
+                            title: 'Descripción',
+                            content: event.description,
+                            color: onSurfaceColor,
+                            isCompleted: false,
+                          ),
+                          const Divider(height: 24),
+                          _buildDetailCardRow(
+                            icon: Icons.calendar_today,
+                            title: 'Fecha',
+                            content: event.date,
+                            color: onSurfaceColor,
+                            isCompleted: false,
+                          ),
+                          const Divider(height: 24),
+                          _buildDetailCardRow(
+                            icon: Icons.access_time,
+                            title: 'Horario',
+                            content: '${event.startTime} - ${event.endTime}',
+                            color: onSurfaceColor,
+                            isCompleted: false,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => _deleteEvent(event.id, context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                          ),
+                          child: const Text('Eliminar'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Cerrar'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: () => _editEvent(event),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.colorScheme.primary,
+                            foregroundColor: theme.colorScheme.onPrimary,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Editar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -577,139 +689,191 @@ class _CalendarioState extends State<Calendario> {
   }
 
   void _showTaskDetails(Task task, BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final surfaceColor = Theme.of(context).colorScheme.surface;
-    final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
+    final surfaceColor = theme.colorScheme.surface;
+    final onSurfaceColor = theme.colorScheme.onSurface;
+    final cardColor = isDark ? Colors.grey[900] : Colors.grey[100];
+    final successColor = Colors.green;
 
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        elevation: 8,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.all(20),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 500),
           decoration: BoxDecoration(
             color: surfaceColor,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Improved header with better checkbox
-              Row(
-                children: [
-                  // New circular checkbox design
-                  GestureDetector(
-                    onTap: () => _toggleTaskCompletion(task, context),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: task.isCompleted
-                            ? Colors.green
-                            : Colors.transparent,
-                        border: Border.all(
-                          color: task.isCompleted ? Colors.green : primaryColor,
-                          width: 2,
+              // Header con estado de completado
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      task.isCompleted
+                          ? successColor.withOpacity(0.8)
+                          : primaryColor.withOpacity(0.8),
+                      task.isCompleted ? successColor : primaryColor,
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => _toggleTaskCompletion(task, context),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: task.isCompleted
+                              ? Colors.white
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+                        child: task.isCompleted
+                            ? Icon(Icons.check, size: 20, color: successColor)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          decoration: task.isCompleted
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
                         ),
                       ),
-                      child: task.isCompleted
-                          ? const Icon(
-                              Icons.check,
-                              size: 20,
-                              color: Colors.white,
-                            )
-                          : null,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                        decoration: task.isCompleted
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.white),
+                      onPressed: () => _editTask(task),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.edit),
-                    color: primaryColor,
-                    onPressed: () => _editTask(task),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Details section remains the same
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[900] : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildDetailRow(
-                      Icons.description,
-                      task.description,
-                      onSurfaceColor,
-                      isCompleted: task.isCompleted,
-                    ),
-                    const Divider(height: 24),
-                    _buildDetailRow(
-                      Icons.calendar_today,
-                      task.dueDate,
-                      onSurfaceColor,
-                      isCompleted: task.isCompleted,
-                    ),
-                    if (task.dueTime.isNotEmpty) ...[
-                      const Divider(height: 24),
-                      _buildDetailRow(
-                        Icons.access_time,
-                        task.dueTime,
-                        onSurfaceColor,
-                        isCompleted: task.isCompleted,
-                      ),
-                    ],
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cerrar'),
+              // Contenido
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Sección de detalles
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () => _deleteTask(task.id, context),
-                        child: const Text(
-                          'Eliminar',
-                          style: TextStyle(color: Colors.red),
+                      child: Column(
+                        children: [
+                          _buildDetailCardRow(
+                            icon: Icons.description,
+                            title: 'Descripción',
+                            content: task.description,
+                            color: onSurfaceColor,
+                            isCompleted: task.isCompleted,
+                          ),
+                          const Divider(height: 24),
+                          _buildDetailCardRow(
+                            icon: Icons.calendar_today,
+                            title: 'Fecha de entrega',
+                            content: task.dueDate,
+                            color: onSurfaceColor,
+                            isCompleted: task.isCompleted,
+                          ),
+                          if (task.dueTime.isNotEmpty) ...[
+                            const Divider(height: 24),
+                            _buildDetailCardRow(
+                              icon: Icons.access_time,
+                              title: 'Hora límite',
+                              content: task.dueTime,
+                              color: onSurfaceColor,
+                              isCompleted: task.isCompleted,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => _deleteTask(task.id, context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                          ),
+                          child: const Text('Eliminar'),
                         ),
-                      ),
-                    ],
-                  ),
-                  ElevatedButton(
-                    onPressed: () => _editTask(task),
-                    child: const Text('Editar'),
-                  ),
-                ],
+                        Row(
+                          children: [
+                            OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Cerrar'),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              onPressed: () => _editTask(task),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.colorScheme.primary,
+                                foregroundColor: theme.colorScheme.onPrimary,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Editar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -836,29 +1000,42 @@ class _CalendarioState extends State<Calendario> {
     _loadItemsForDay(_selectedDay);
   }
 
-  Widget _buildDetailRow(IconData icon, String text, Color color,
-      {bool isCompleted = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 24, color: color),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 16,
-                color: color,
-                decoration: isCompleted
-                    ? TextDecoration.lineThrough
-                    : TextDecoration.none,
+  Widget _buildDetailCardRow({
+    required IconData icon,
+    required String title,
+    required String content,
+    required Color color,
+    required bool isCompleted,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 24, color: color.withOpacity(0.8)),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color.withOpacity(0.6),
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                content,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: color,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -962,21 +1139,27 @@ class _CalendarioState extends State<Calendario> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (_isOptionsVisible) ...[
-          Transform.translate(
-            offset: const Offset(
-                0, 0), // Ajusta este valor si necesitas mover verticalmente
-            child: _buildOptionButton(
-              "Agregar Evento",
-              _navigateToAddEvent,
+          FadeTransition(
+            opacity: _fabAnimation,
+            child: ScaleTransition(
+              scale: _fabAnimation,
+              child: _buildOptionButton(
+                "Agregar Evento",
+                _navigateToAddEvent,
+                Icons.event,
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          Transform.translate(
-            offset: const Offset(
-                0, 0), // Ajusta este valor si necesitas mover verticalmente
-            child: _buildOptionButton(
-              "Agregar Tarea",
-              _navigateToAddTask,
+          FadeTransition(
+            opacity: _fabAnimation,
+            child: ScaleTransition(
+              scale: _fabAnimation,
+              child: _buildOptionButton(
+                "Agregar Tarea",
+                _navigateToAddTask,
+                Icons.task,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -984,60 +1167,60 @@ class _CalendarioState extends State<Calendario> {
         FloatingActionButton(
           backgroundColor: const Color(0xFF6750A4),
           elevation: 6,
-          child: Icon(
-            _isOptionsVisible ? Icons.close : Icons.add,
-            color: Colors.white,
+          child: AnimatedIcon(
+            icon: AnimatedIcons.add_event,
+            progress: _fabAnimationController,
           ),
-          onPressed: () =>
-              setState(() => _isOptionsVisible = !_isOptionsVisible),
+          onPressed: () {
+            setState(() => _isOptionsVisible = !_isOptionsVisible);
+            if (_isOptionsVisible) {
+              _fabAnimationController.forward();
+            } else {
+              _fabAnimationController.reverse();
+            }
+          },
         ),
       ],
     );
   }
 
-  Widget _buildOptionButton(String label, VoidCallback onTap) {
-    return Container(
-      margin: const EdgeInsets.only(right: 0), // Eliminamos el margen derecho
-      decoration: BoxDecoration(
+  Widget _buildOptionButton(String label, VoidCallback onTap, IconData icon) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+        onTap: () {
+          onTap();
+          setState(() => _isOptionsVisible = false);
+          _fabAnimationController.reverse();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6750A4),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Material(
-        color: const Color(0xFF6750A4),
-        borderRadius: BorderRadius.circular(28),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(28),
-          onTap: () {
-            onTap();
-            setState(() => _isOptionsVisible = false);
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  label.contains('Evento') ? Icons.event : Icons.task,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
                   color: Colors.white,
-                  size: 20,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

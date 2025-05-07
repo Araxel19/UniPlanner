@@ -4,8 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class EditTaskScreen extends StatefulWidget {
-  final dynamic task;
-  final int userId;
+  final dynamic task; // Puede ser Map o Task
+  final String userId;
 
   const EditTaskScreen({Key? key, required this.task, required this.userId})
       : super(key: key);
@@ -19,27 +19,40 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   late TextEditingController _descriptionController;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
+  late String _taskId;
+  bool _isCompleted = false;
+  late String _listName;
 
   @override
   void initState() {
     super.initState();
 
     // Manejar tanto Map como objeto Task
-    final dynamic taskData = widget.task;
+    _taskId = widget.task is Map ? widget.task['id'] : widget.task.id;
     _titleController = TextEditingController(
-        text: taskData is Map ? taskData['title'] : taskData.title);
-
+        text: widget.task is Map ? widget.task['title'] : widget.task.title);
     _descriptionController = TextEditingController(
-        text: taskData is Map
-            ? taskData['description'] ?? ''
-            : taskData.description ?? '');
+        text: widget.task is Map
+            ? widget.task['description'] ?? ''
+            : widget.task.description ?? '');
+    _isCompleted = widget.task is Map
+        ? widget.task['isCompleted'] ?? false
+        : widget.task.isCompleted;
+    _listName = widget.task is Map
+        ? widget.task['listName'] ?? 'Ideas'
+        : widget.task.listName ?? 'Ideas';
 
     // Parsear fecha
-    final dueDate = taskData is Map ? taskData['dueDate'] : taskData.dueDate;
+    final dueDate =
+        widget.task is Map ? widget.task['dueDate'] : widget.task.dueDate;
     _selectedDate = DateFormat('yyyy-MM-dd').parse(dueDate);
 
     // Parsear hora
-    final dueTime = taskData is Map ? taskData['dueTime'] : taskData.dueTime;
+    final dueTime = widget.task is Map
+        ? widget.task['dueTime'] ?? '00:00'
+        : widget.task.dueTime ?? '00:00';
     final timeParts = dueTime.split(':');
     _selectedTime = TimeOfDay(
       hour: int.parse(timeParts[0]),
@@ -81,18 +94,17 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   }
 
   Future<void> _updateTask() async {
-    if (_titleController.text.isEmpty) {
-      _showErrorDialog('Por favor ingresa un título');
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _showErrorDialog('Debes iniciar sesión');
-      return;
-    }
+    setState(() => _isSaving = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showErrorDialog('Debes iniciar sesión');
+        return;
+      }
+
       final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
@@ -101,14 +113,14 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
           .collection('users')
           .doc(user.uid)
           .collection('tasks')
-          .doc(widget.task.id) // Usar el ID del documento existente
+          .doc(_taskId) // Usamos _taskId en lugar de widget.task.id
           .update({
         'title': _titleController.text,
         'dueDate': formattedDate,
         'dueTime': formattedTime,
         'description': _descriptionController.text,
-        'isCompleted': widget.task.isCompleted,
-        'listName': widget.task.listName ?? 'Ideas',
+        'isCompleted': _isCompleted,
+        'listName': _listName,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -116,7 +128,9 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      _showErrorDialog('Error al actualizar la tarea: $e');
+      _showErrorDialog('Error al actualizar: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -138,138 +152,119 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDarkMode ? Colors.black : Colors.white;
-    final textColor = isDarkMode ? Colors.white : Colors.black;
-    final borderColor =
-        isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFD9D9D9);
-    final chipColor =
-        isDarkMode ? const Color(0xFF444444) : const Color(0xFFFEF7FF);
-    const buttonColor = Color(0xFF6750A4);
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+    final onSurfaceColor = theme.colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
+      appBar: AppBar(
+        title: const Text('Editar Tarea'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _isSaving ? null : _updateTask,
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: borderColor, width: 1),
-                    ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Título
+              TextFormField(
+                controller: _titleController,
+                decoration: InputDecoration(
+                  labelText: 'Título de la tarea',
+                  prefixIcon: const Icon(Icons.title),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                ),
+                style: TextStyle(color: onSurfaceColor),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor ingresa un título';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // Fecha y hora
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Icon(Icons.chevron_left,
-                                color: textColor, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Editar Tarea',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.4,
-                              height: 1.4,
-                              color: textColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      GestureDetector(
-                        onTap: _updateTask,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: buttonColor,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Text(
-                            'Actualizar',
-                            style: TextStyle(fontSize: 14, color: Colors.white),
-                          ),
+                      // Fecha
+                      ListTile(
+                        onTap: _selectDate,
+                        leading:
+                            Icon(Icons.calendar_today, color: primaryColor),
+                        title: const Text('Fecha de vencimiento'),
+                        subtitle: Text(
+                          DateFormat('EEEE, d MMMM y').format(_selectedDate),
+                          style: TextStyle(color: onSurfaceColor),
                         ),
+                        trailing: const Icon(Icons.chevron_right),
+                      ),
+                      const Divider(),
+
+                      // Hora
+                      ListTile(
+                        onTap: _selectTime,
+                        leading: Icon(Icons.access_time, color: primaryColor),
+                        title: const Text('Hora de vencimiento'),
+                        subtitle: Text(
+                          _selectedTime.format(context),
+                          style: TextStyle(color: onSurfaceColor),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
                       ),
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
-
-                // Título
-                TextFormField(
-                  controller: _titleController,
-                  decoration: InputDecoration(
-                    hintText: 'Título de la tarea',
-                    hintStyle: TextStyle(color: textColor.withOpacity(0.6)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: borderColor),
-                    ),
-                    filled: true,
-                    fillColor: Colors.transparent,
-                  ),
-                  style: TextStyle(color: textColor),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Fecha
-                ListTile(
-                  onTap: _selectDate,
-                  leading: Icon(Icons.calendar_today, color: textColor),
-                  title: Text(
-                    DateFormat('dd/MM/yyyy').format(_selectedDate),
-                    style: TextStyle(color: textColor),
+              // Descripción
+              TextFormField(
+                controller: _descriptionController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: 'Descripción',
+                  alignLabelWithHint: true,
+                  prefixIcon: const Icon(Icons.description),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
+                style: TextStyle(color: onSurfaceColor),
+              ),
+              const SizedBox(height: 20),
 
-                // Hora
-                ListTile(
-                  onTap: _selectTime,
-                  leading: Icon(Icons.access_time, color: textColor),
-                  title: Text(
-                    _selectedTime.format(context),
-                    style: TextStyle(color: textColor),
-                  ),
+              // Estado de completado
+              SwitchListTile(
+                title: const Text('Completada'),
+                value: _isCompleted,
+                onChanged:
+                    null, // No permitir cambiar aquí, solo en la vista principal
+                secondary: Icon(
+                  _isCompleted
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: _isCompleted ? Colors.green : primaryColor,
                 ),
-
-                const SizedBox(height: 16),
-
-                // Descripción
-                TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Descripción de la tarea',
-                    hintStyle: TextStyle(color: textColor.withOpacity(0.6)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: borderColor),
-                    ),
-                    filled: true,
-                    fillColor: chipColor,
-                  ),
-                  style: TextStyle(color: textColor),
-                ),
-
-                const SizedBox(height: 24),
-              ],
-            ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),

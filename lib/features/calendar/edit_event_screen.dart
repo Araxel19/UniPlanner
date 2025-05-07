@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 
 class EditEvento extends StatefulWidget {
   final dynamic event;
-  final int userId;
+  final String userId;
 
   const EditEvento({Key? key, required this.event, required this.userId})
       : super(key: key);
@@ -20,16 +20,15 @@ class _EditEventoState extends State<EditEvento> {
   late TimeOfDay _endTime;
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    // Inicializar los controladores con los valores del evento
     _titleController = TextEditingController(text: widget.event.title);
     _descriptionController =
         TextEditingController(text: widget.event.description);
-
-    // Parsear la fecha y hora del evento
     _selectedDate = DateFormat('yyyy-MM-dd').parse(widget.event.date);
 
     final startTimeParts = widget.event.startTime.split(':');
@@ -53,27 +52,26 @@ class _EditEventoState extends State<EditEvento> {
   }
 
   Future<void> _updateEvent() async {
-    if (_titleController.text.isEmpty) {
-      _showErrorDialog('Por favor ingresa un título');
-      return;
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _showErrorDialog('Debes iniciar sesión');
-      return;
-    }
-
-    final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    final startTimeStr = _formatTime(_startTime);
-    final endTimeStr = _formatTime(_endTime);
-
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() => _isSaving = true);
+    
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showErrorDialog('Debes iniciar sesión');
+        return;
+      }
+
+      final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      final startTimeStr = _formatTime(_startTime);
+      final endTimeStr = _formatTime(_endTime);
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('events')
-          .doc(widget.event.id) // Usar el ID del documento existente
+          .doc(widget.event.id)
           .update({
         'title': _titleController.text,
         'date': formattedDate,
@@ -87,7 +85,84 @@ class _EditEventoState extends State<EditEvento> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      _showErrorDialog('Error al actualizar el evento: $e');
+      _showErrorDialog('Error al actualizar: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).colorScheme.primary,
+              onPrimary: Colors.white,
+              onSurface: Theme.of(context).colorScheme.onSurface,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (date != null) setState(() => _selectedDate = date);
+  }
+
+  Future<void> _selectStartTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _startTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).colorScheme.primary,
+              onPrimary: Colors.white,
+              onSurface: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (time != null) setState(() => _startTime = time);
+  }
+
+  Future<void> _selectEndTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _endTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).colorScheme.primary,
+              onPrimary: Colors.white,
+              onSurface: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (time != null) {
+      final startMinutes = _startTime.hour * 60 + _startTime.minute;
+      final endMinutes = time.hour * 60 + time.minute;
+      if (endMinutes < startMinutes) {
+        _showErrorDialog('La hora de fin debe ser posterior a la de inicio');
+      } else {
+        setState(() => _endTime = time);
+      }
     }
   }
 
@@ -113,178 +188,119 @@ class _EditEventoState extends State<EditEvento> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDarkMode ? Colors.black : Colors.white;
-    final textColor = isDarkMode ? Colors.white : Colors.black;
-    final borderColor =
-        isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFD9D9D9);
-    final chipColor =
-        isDarkMode ? const Color(0xFF444444) : const Color(0xFFFEF7FF);
-    const buttonColor = Color(0xFF65558F);
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
+    final surfaceColor = theme.colorScheme.surface;
+    final onSurfaceColor = theme.colorScheme.onSurface;
+    final cardColor = isDarkMode ? Colors.grey[900] : Colors.grey[100];
 
     return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
+      appBar: AppBar(
+        title: const Text('Editar Evento'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _isSaving ? null : _updateEvent,
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: borderColor, width: 1),
-                    ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Título
+              TextFormField(
+                controller: _titleController,
+                decoration: InputDecoration(
+                  labelText: 'Título del evento',
+                  prefixIcon: const Icon(Icons.title),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                ),
+                style: TextStyle(color: onSurfaceColor),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor ingresa un título';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // Fecha y hora
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Icon(Icons.chevron_left,
-                                size: 24, color: textColor),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Editar Evento',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.4,
-                              height: 1.4,
-                              color: textColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      GestureDetector(
-                        onTap: _updateEvent,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: buttonColor,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Text(
-                            'Actualizar',
-                            style: TextStyle(fontSize: 14, color: Colors.white),
-                          ),
+                      // Fecha
+                      ListTile(
+                        onTap: _selectDate,
+                        leading: Icon(Icons.calendar_today, color: primaryColor),
+                        title: const Text('Fecha'),
+                        subtitle: Text(
+                          DateFormat('EEEE, d MMMM y').format(_selectedDate),
+                          style: TextStyle(color: onSurfaceColor),
                         ),
+                        trailing: const Icon(Icons.chevron_right),
+                      ),
+                      const Divider(),
+
+                      // Hora inicio
+                      ListTile(
+                        onTap: _selectStartTime,
+                        leading: Icon(Icons.access_time, color: primaryColor),
+                        title: const Text('Hora de inicio'),
+                        subtitle: Text(
+                          _startTime.format(context),
+                          style: TextStyle(color: onSurfaceColor),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                      ),
+                      const Divider(),
+
+                      // Hora fin
+                      ListTile(
+                        onTap: _selectEndTime,
+                        leading: Icon(Icons.access_time_outlined, color: primaryColor),
+                        title: const Text('Hora de fin'),
+                        subtitle: Text(
+                          _endTime.format(context),
+                          style: TextStyle(color: onSurfaceColor),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
                       ),
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
-
-                // Título
-                TextFormField(
-                  controller: _titleController,
-                  decoration: InputDecoration(
-                    hintText: 'Título del evento',
-                    hintStyle: TextStyle(color: textColor.withOpacity(0.6)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: borderColor),
-                    ),
-                    filled: true,
-                    fillColor: Colors.transparent,
-                  ),
-                  style: TextStyle(color: textColor),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Fecha
-                ListTile(
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: _selectedDate,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (date != null) setState(() => _selectedDate = date);
-                  },
-                  leading: Icon(Icons.calendar_today, color: textColor),
-                  title: Text(
-                    DateFormat('dd/MM/yyyy').format(_selectedDate),
-                    style: TextStyle(color: textColor),
+              // Descripción
+              TextFormField(
+                controller: _descriptionController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: 'Descripción',
+                  alignLabelWithHint: true,
+                  prefixIcon: const Icon(Icons.description),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-
-                // Hora inicio
-                ListTile(
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: context,
-                      initialTime: _startTime,
-                    );
-                    if (time != null) setState(() => _startTime = time);
-                  },
-                  leading: Icon(Icons.access_time, color: textColor),
-                  title: Text(
-                    _startTime.format(context),
-                    style: TextStyle(color: textColor),
-                  ),
-                ),
-
-                // Hora fin
-                ListTile(
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: context,
-                      initialTime: _endTime,
-                    );
-                    if (time != null) {
-                      final startMinutes =
-                          _startTime.hour * 60 + _startTime.minute;
-                      final endMinutes = time.hour * 60 + time.minute;
-                      if (endMinutes < startMinutes) {
-                        _showErrorDialog(
-                            'La hora de fin no puede ser anterior a la de inicio');
-                      } else {
-                        setState(() => _endTime = time);
-                      }
-                    }
-                  },
-                  leading: Icon(Icons.access_time_outlined, color: textColor),
-                  title: Text(
-                    _endTime.format(context),
-                    style: TextStyle(color: textColor),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Descripción
-                TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Descripción del evento',
-                    hintStyle: TextStyle(color: textColor.withOpacity(0.6)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: borderColor),
-                    ),
-                    filled: true,
-                    fillColor: chipColor,
-                  ),
-                  style: TextStyle(color: textColor),
-                ),
-
-                const SizedBox(height: 24),
-              ],
-            ),
+                style: TextStyle(color: onSurfaceColor),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),

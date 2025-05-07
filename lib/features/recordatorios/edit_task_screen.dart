@@ -23,6 +23,7 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
   late TextEditingController _descriptionController;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
+  String? _selectedList;
 
   @override
   void initState() {
@@ -32,13 +33,21 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
       text: widget.task['description'] ?? '',
     );
 
-    _selectedDate = DateFormat('yyyy-MM-dd').parse(widget.task['dueDate']);
+    _selectedDate = widget.task['dueDate'] != null
+        ? DateFormat('yyyy-MM-dd').parse(widget.task['dueDate'])
+        : DateTime.now();
 
-    final timeParts = widget.task['dueTime'].split(':');
-    _selectedTime = TimeOfDay(
-      hour: int.parse(timeParts[0]),
-      minute: int.parse(timeParts[1]),
-    );
+    if (widget.task['dueTime'] != null) {
+      final timeParts = widget.task['dueTime'].split(':');
+      _selectedTime = TimeOfDay(
+        hour: int.parse(timeParts[0]),
+        minute: int.parse(timeParts[1]),
+      );
+    } else {
+      _selectedTime = TimeOfDay.now();
+    }
+
+    _selectedList = widget.task['listName'] ?? 'Ideas';
   }
 
   @override
@@ -69,7 +78,7 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
         'dueDate': formattedDate,
         'dueTime': formattedTime,
         'description': _descriptionController.text,
-        'listName': widget.task['listName'] ?? 'Ideas',
+        'listName': _selectedList,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -91,6 +100,9 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ],
       ),
@@ -100,89 +112,223 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final textColor = isDarkMode ? Colors.white : Colors.black;
-    const buttonColor = Color(0xFF6750A4);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar Tarea'),
+        centerTitle: true,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _updateTask,
+            tooltip: 'Guardar cambios',
           ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Campo de título
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Título',
-                border: OutlineInputBorder(),
+            Text(
+              'Título',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // Selector de fecha
-            ListTile(
-              title: Text(
-                  'Fecha: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}'),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: _selectedDate,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (date != null) setState(() => _selectedDate = date);
-              },
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                hintText: 'Ingresa el título de la tarea',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              style: theme.textTheme.bodyLarge,
             ),
 
-            // Selector de hora
-            ListTile(
-              title: Text('Hora: ${_selectedTime.format(context)}'),
-              trailing: const Icon(Icons.access_time),
-              onTap: () async {
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: _selectedTime,
-                );
-                if (time != null) setState(() => _selectedTime = time);
-              },
+            const SizedBox(height: 24),
+
+            // Selector de fecha y hora
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Fecha',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2100),
+                          );
+                          if (date != null) {
+                            setState(() => _selectedDate = date);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: theme.colorScheme.outline,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                DateFormat('dd/MM/yyyy').format(_selectedDate),
+                                style: theme.textTheme.bodyLarge,
+                              ),
+                              Icon(
+                                Icons.calendar_today,
+                                size: 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hora',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: _selectedTime,
+                          );
+                          if (time != null) {
+                            setState(() => _selectedTime = time);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: theme.colorScheme.outline,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _selectedTime.format(context),
+                                style: theme.textTheme.bodyLarge,
+                              ),
+                              Icon(
+                                Icons.access_time,
+                                size: 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
             // Descripción
+            Text(
+              'Descripción',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(height: 8),
             TextFormField(
               controller: _descriptionController,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descripción',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: 'Agrega una descripción (opcional)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              style: theme.textTheme.bodyLarge,
+            ),
+
+            const SizedBox(height: 24),
+
+            // Selector de lista
+            Text(
+              'Lista',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
-            // Selector de lista
-            ListTile(
-              title: const Text('Lista'),
-              trailing: DropdownButton<String>(
-                value: widget.task['listName'] ?? 'Ideas',
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: theme.colorScheme.outline,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: DropdownButton<String>(
+                value: _selectedList,
+                isExpanded: true,
+                underline: const SizedBox(),
                 items: widget.availableLists.map((list) {
                   return DropdownMenuItem(
                     value: list,
-                    child: Text(list),
+                    child: Text(
+                      list,
+                      style: theme.textTheme.bodyLarge,
+                    ),
                   );
                 }).toList(),
                 onChanged: (newList) {
                   setState(() {
-                    widget.task['listName'] = newList;
+                    _selectedList = newList;
                   });
                 },
               ),

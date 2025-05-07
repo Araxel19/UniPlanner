@@ -611,7 +611,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFinanceItem(Map<String, dynamic> transaction) {
-    final isIncome = transaction['isIncome'] == 1;
+    final isIncome =
+        transaction['isIncome'] == true || transaction['isIncome'] == 1;
     final amount = transaction['amount'] as double;
     final theme = Theme.of(context);
 

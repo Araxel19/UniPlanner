@@ -17,7 +17,6 @@ import '../../features/notas/registrar_curso.dart';
 import '../../features/notas/EditarCurso.dart';
 import '../../features/notas/RegistrarNotas.dart';
 import '../../features/recordatorios/recordatorios_screen.dart';
-import '../../features/recordatorios/edit_event_screen.dart';
 import '../../features/recordatorios/edit_task_screen.dart';
 import '../../features/recordatorios/add_task_reminder_screen.dart';
 // Importa las nuevas pantallas que crearemos
@@ -175,21 +174,6 @@ class AppRoutes {
 
         // Recordatorios
         recordatorios: (context) => const RecordatoriosScreen(),
-        editReminderEvent: (context) {
-          final args = ModalRoute.of(context)?.settings.arguments
-              as Map<String, dynamic>?;
-
-          if (args == null || args['event'] == null || args['userId'] == null) {
-            Navigator.pop(context);
-            return const Center(
-                child: Text('Error: Datos del evento requeridos'));
-          }
-
-          return EditEventReminderScreen(
-            event: args['event'],
-            userId: args['userId'],
-          );
-        },
         editReminderTask: (context) {
           final args = ModalRoute.of(context)?.settings.arguments
               as Map<String, dynamic>?;

@@ -17,7 +17,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
   String? _userId;
   List<String> _lists = ['Hoy', 'Ideas'];
   String _selectedList = 'Ideas';
-  Map<String, bool> _completedTasksVisibility = {};
   bool _showCompletedTasks = false;
 
   @override
@@ -49,10 +48,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       setState(() {
         _lists = ['Hoy', 'Ideas']
           ..addAll(listsSnapshot.docs.map((doc) => doc.id));
-
-        for (var list in _lists) {
-          _completedTasksVisibility[list] = false;
-        }
       });
     } catch (e) {
       debugPrint('Error cargando listas: $e');
@@ -101,6 +96,33 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     });
   }
 
+  Future<void> _deleteTask(String taskId) async {
+    if (_userId == null) return;
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('tasks')
+          .doc(taskId)
+          .delete();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tarea eliminada correctamente'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al eliminar tarea: $e'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _showAddTaskDialog(BuildContext context) {
     if (_userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,6 +160,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancelar'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -153,6 +178,10 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 }
               },
               child: const Text('Crear'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
             ),
           ],
         );
@@ -172,7 +201,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
 
     setState(() {
       _lists.add(listName);
-      _completedTasksVisibility[listName] = false;
       _selectedList = listName;
     });
   }
@@ -196,6 +224,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancelar'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -213,6 +244,10 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 }
               },
               child: const Text('Renombrar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
             ),
           ],
         );
@@ -257,9 +292,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       final index = _lists.indexOf(oldName);
       _lists[index] = newName;
       _selectedList = newName;
-      _completedTasksVisibility[newName] =
-          _completedTasksVisibility[oldName] ?? false;
-      _completedTasksVisibility.remove(oldName);
     });
   }
 
@@ -300,7 +332,6 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
 
       setState(() {
         _lists.remove(listName);
-        _completedTasksVisibility.remove(listName);
         if (_selectedList == listName) {
           _selectedList = 'Ideas';
         }
@@ -331,6 +362,8 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recordatorios'),
+        elevation: 0,
+        centerTitle: true,
       ),
       body: Column(
         children: [
@@ -338,6 +371,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             height: 60,
+            color: Theme.of(context).appBarTheme.backgroundColor,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _lists.length + 1,
@@ -350,13 +384,18 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.grey),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       child: Row(
-                        children: const [
-                          Icon(Icons.add, size: 18),
-                          SizedBox(width: 4),
-                          Text('Nueva lista'),
+                        children: [
+                          Icon(Icons.add, size: 18, 
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text('Nueva lista',
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.primary)),
                         ],
                       ),
                     ),
@@ -371,6 +410,12 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                       onSelected: (selected) {
                         setState(() => _selectedList = listName);
                       },
+                      selectedColor: Theme.of(context).colorScheme.primary,
+                      labelStyle: TextStyle(
+                        color: _selectedList == listName
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
                     ),
                     if (_selectedList == listName &&
                         listName != 'Ideas' &&
@@ -381,9 +426,13 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                           PopupMenuItem<String>(
                             value: 'rename',
                             child: Row(
-                              children: const [
-                                Icon(Icons.edit, size: 20),
-                                SizedBox(width: 8),
+                              children: [
+                                Icon(Icons.edit, size: 20,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge
+                                        ?.color),
+                                const SizedBox(width: 8),
                                 Text('Renombrar lista'),
                               ],
                             ),
@@ -391,11 +440,15 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                           PopupMenuItem<String>(
                             value: 'delete',
                             child: Row(
-                              children: const [
-                                Icon(Icons.delete, size: 20, color: Colors.red),
-                                SizedBox(width: 8),
+                              children: [
+                                Icon(Icons.delete, size: 20,
+                                    color: Theme.of(context).colorScheme.error),
+                                const SizedBox(width: 8),
                                 Text('Eliminar lista',
-                                    style: TextStyle(color: Colors.red)),
+                                    style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error)),
                               ],
                             ),
                           ),
@@ -424,6 +477,8 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddTaskDialog(context),
         child: const Icon(Icons.add),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
       ),
       bottomNavigationBar: const BottomNavigation(),
     );
@@ -443,12 +498,10 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error, size: 50, color: Colors.grey),
+                Icon(Icons.error, size: 50, 
+                    color: Theme.of(context).colorScheme.error),
                 const SizedBox(height: 16),
-                const Text(
-                  'Error al cargar tareas',
-                  style: TextStyle(color: Colors.grey),
-                ),
+                const Text('Error al cargar tareas'),
                 TextButton(
                   onPressed: () => setState(() {}),
                   child: const Text('Reintentar'),
@@ -463,11 +516,12 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.list, size: 50, color: Colors.grey),
+                Icon(Icons.list, size: 50, 
+                    color: Theme.of(context).disabledColor),
                 const SizedBox(height: 16),
                 Text(
                   'No hay tareas en "$_selectedList"',
-                  style: const TextStyle(color: Colors.grey),
+                  style: TextStyle(color: Theme.of(context).disabledColor),
                 ),
               ],
             ),
@@ -481,7 +535,7 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             tasks.where((doc) => doc['isCompleted'] ?? false).toList();
 
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(6),
           children: [
             ...pendingTasks.map((doc) => _buildTaskItem(doc)).toList(),
             if (completedTasks.isNotEmpty) ...[
@@ -492,10 +546,11 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Tareas Completadas',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                     Icon(_showCompletedTasks
                         ? Icons.keyboard_arrow_up
@@ -527,12 +582,10 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error, size: 50, color: Colors.grey),
+                Icon(Icons.error, size: 50,
+                    color: Theme.of(context).colorScheme.error),
                 const SizedBox(height: 16),
-                const Text(
-                  'Error al cargar tareas',
-                  style: TextStyle(color: Colors.grey),
-                ),
+                const Text('Error al cargar tareas'),
                 TextButton(
                   onPressed: () => setState(() {}),
                   child: const Text('Reintentar'),
@@ -547,7 +600,8 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.today, size: 50, color: Colors.grey),
+                Icon(Icons.today, size: 50,
+                    color: Theme.of(context).disabledColor),
                 const SizedBox(height: 16),
                 const Text(
                   'No hay tareas pendientes para hoy',
@@ -559,10 +613,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(6),
           itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) =>
-              _buildTaskItem(snapshot.data!.docs[index]),
+          itemBuilder: (context, index) => _buildTaskItem(snapshot.data!.docs[index]),
         );
       },
     );
@@ -573,48 +626,102 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     final isCompleted = task['isCompleted'] ?? false;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: ListTile(
         leading: Checkbox(
           value: isCompleted,
           onChanged: (value) => _toggleTaskCompletion(doc.id, !isCompleted),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          fillColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.selected)) {
+              return Theme.of(context).colorScheme.primary;
+            }
+            return Theme.of(context).disabledColor;
+          }),
         ),
         title: Text(
           task['title'] ?? 'Sin título',
-          style: TextStyle(
-            decoration: isCompleted ? TextDecoration.lineThrough : null,
-            color: isCompleted ? Colors.grey : null,
-          ),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                color: isCompleted
+                    ? Theme.of(context).disabledColor
+                    : Theme.of(context).textTheme.bodyLarge?.color,
+              ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (task['description']?.toString().isNotEmpty == true)
-              Text(task['description']),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  task['description'],
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).disabledColor,
+                      ),
+                ),
+              ),
             if (task['dueTime'] != null && task['dueDate'] != null)
-              Text('${task['dueTime']} - ${task['dueDate']}'),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time, size: 16,
+                        color: Theme.of(context).disabledColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${task['dueTime']} - ${task['dueDate']}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).disabledColor,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
         trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
+          icon: Icon(Icons.more_vert,
+              color: Theme.of(context).textTheme.bodyLarge?.color),
           itemBuilder: (context) => [
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'edit',
               child: Row(
                 children: [
-                  Icon(Icons.edit, size: 20),
-                  SizedBox(width: 8),
+                  Icon(Icons.edit, size: 20,
+                      color: Theme.of(context).textTheme.bodyLarge?.color),
+                  const SizedBox(width: 8),
                   Text('Editar'),
                 ],
               ),
             ),
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'move',
               child: Row(
                 children: [
-                  Icon(Icons.move_to_inbox, size: 20),
-                  SizedBox(width: 8),
+                  Icon(Icons.move_to_inbox, size: 20,
+                      color: Theme.of(context).textTheme.bodyLarge?.color),
+                  const SizedBox(width: 8),
                   Text('Mover a otra lista'),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, size: 20,
+                      color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 8),
+                  Text('Eliminar',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
                 ],
               ),
             ),
@@ -632,6 +739,8 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
               );
             } else if (value == 'move') {
               _showMoveTaskDialog(context, doc.id);
+            } else if (value == 'delete') {
+              _showDeleteConfirmationDialog(context, doc.id);
             }
           },
         ),
@@ -663,6 +772,38 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteConfirmationDialog(BuildContext context, String taskId) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Eliminar tarea'),
+          content: const Text('¿Estás seguro de que quieres eliminar esta tarea?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _deleteTask(taskId);
+                Navigator.pop(context);
+              },
+              child: const Text('Eliminar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+            ),
+          ],
         );
       },
     );
