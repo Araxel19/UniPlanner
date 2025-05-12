@@ -1,50 +1,47 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'shared_widgets/general/app_routes.dart';
-import 'providers/theme_provider.dart';
+import 'package:uniplanner/providers/auth_provider.dart' as auth_provider;
+import 'package:uniplanner/shared_widgets/general/app_routes.dart';
+import 'package:uniplanner/providers/theme_provider.dart';
 import 'package:uniplanner/providers/user_provider.dart';
-import 'package:uniplanner/providers/auth_provider.dart';
-import 'core/db/sqlite_helper.dart';
-import 'core/db/auth_service.dart';
-import 'core/db/firestore_service.dart';
+import 'package:uniplanner/core/db/sqlite_helper.dart';
+import 'package:uniplanner/core/db/auth_service.dart';
+import 'package:uniplanner/core/db/firestore_service.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Configuración mejorada de Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const MainWrapper());
+  
+  runApp(const UniPlannerApp());
 }
 
-class MainWrapper extends StatelessWidget {
-  const MainWrapper({super.key});
+class UniPlannerApp extends StatelessWidget {
+  const UniPlannerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (context) {
-            final provider = ThemeProvider();
-            provider.initialize(); // Inicializa el tema
-            return provider;
-          },
-        ),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..initialize()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => auth_provider.AuthProvider()),
         Provider(create: (_) => AuthService()),
         Provider(create: (_) => FirestoreService()),
         Provider(create: (_) => SQLiteHelper()),
       ],
-      child: const MyApp(),
+      child: const AppContent(),
     );
   }
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AppContent extends StatelessWidget {
+  const AppContent({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +51,27 @@ class MyApp extends StatelessWidget {
       title: 'UniPlanner',
       debugShowCheckedModeBanner: false,
       theme: themeProvider.currentTheme,
-      initialRoute: AppRoutes.login,
+      home: const AuthWrapper(),
       routes: AppRoutes.routes,
     );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<auth_provider.AuthProvider>(context);
+
+    if (!authProvider.initialAuthCheckComplete) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return authProvider.user != null
+        ? AppRoutes.routes[AppRoutes.home]!(context)
+        : AppRoutes.routes[AppRoutes.login]!(context);
   }
 }

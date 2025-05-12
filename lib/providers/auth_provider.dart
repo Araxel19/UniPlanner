@@ -7,16 +7,19 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   bool _emailSent = false;
+  bool _initialAuthCheckComplete = false;
 
   User? get user => _user;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get emailSent => _emailSent;
+  bool get initialAuthCheckComplete => _initialAuthCheckComplete;
 
   AuthProvider() {
     // Escuchar cambios en el estado de autenticación
     FirebaseAuth.instance.authStateChanges().listen((User? user) {
       _user = user;
+      _initialAuthCheckComplete = true;
       notifyListeners();
     });
   }
@@ -85,7 +88,7 @@ class AuthProvider with ChangeNotifier {
     } on FirebaseAuthException catch (e) {
       _errorMessage = _getErrorMessage(e.code);
       notifyListeners();
-      throw Exception(_errorMessage); // Lanza excepción para manejar en UI
+      throw Exception(_errorMessage);
     } catch (e) {
       _errorMessage = 'Error en el registro: ${e.toString()}';
       notifyListeners();
@@ -158,9 +161,14 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  void setUser(User user) {
-    _user = user;
-    notifyListeners();
+  Future<void> reloadUser() async {
+    try {
+      await _user?.reload();
+      _user = FirebaseAuth.instance.currentUser;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Error al actualizar los datos del usuario';
+    }
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
@@ -178,16 +186,6 @@ class AuthProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> reloadUser() async {
-    try {
-      await _user?.reload();
-      _user = FirebaseAuth.instance.currentUser;
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Error al actualizar los datos del usuario';
     }
   }
 
