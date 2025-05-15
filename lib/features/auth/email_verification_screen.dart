@@ -74,7 +74,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          AppRoutes.home, // Usamos la constante de AppRoutes
+          AppRoutes.login, // Usamos la constante de AppRoutes
           (route) => false,
         );
       }
