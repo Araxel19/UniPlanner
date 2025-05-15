@@ -137,7 +137,7 @@ class _CrearCuentaState extends State<CrearCuenta> {
                                 },
                               ),
                             ),
-                            validator: (value) => value!.length >= 6
+                            validator: (value) => value!.length >= 8
                                 ? null
                                 : 'Mínimo 6 caracteres',
                           ),
