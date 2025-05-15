@@ -139,7 +139,7 @@ class _CrearCuentaState extends State<CrearCuenta> {
                             ),
                             validator: (value) => value!.length >= 8
                                 ? null
-                                : 'Mínimo 6 caracteres',
+                                : 'Mínimo 8 caracteres',
                           ),
                           const SizedBox(height: 24),
                           SizedBox(
