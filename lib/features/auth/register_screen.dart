@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uniplanner/providers/auth_provider.dart';
 import 'email_verification_screen.dart';
+import 'package:uniplanner/services/auth_service.dart';
 
 class CrearCuenta extends StatefulWidget {
   const CrearCuenta({super.key});
@@ -16,6 +17,8 @@ class _CrearCuentaState extends State<CrearCuenta> {
   final TextEditingController _usernameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+
+  final AuthService _authService = AuthService();
 
   void _handleRegistration() async {
     FocusScope.of(context).unfocus();
@@ -152,6 +155,39 @@ class _CrearCuentaState extends State<CrearCuenta> {
                                     const EdgeInsets.symmetric(vertical: 16),
                               ),
                               child: const Text('Registrarse'),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: Image.asset(
+                                'assets/google_logo.png',
+                                height: 24,
+                              ),
+                              label: const Text('Registrarse con Google'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                side: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              onPressed: () async {
+                                final user =
+                                    await _authService.signInWithGoogle();
+                                if (user != null) {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          EmailVerificationScreen(user: user),
+                                    ),
+                                  );
+                                } else {
+                                  _showTopSnackBar(
+                                      'Error al registrarse con Google');
+                                }
+                              },
                             ),
                           ),
                           const SizedBox(height: 16),

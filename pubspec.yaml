@@ -4,7 +4,7 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -27,6 +27,10 @@ dependencies:
   rxdart: ^0.28.0
   firebase_storage: ^12.4.5
   connectivity_plus: ^6.1.4
+
+  google_sign_in: ^6.2.1
+
+  local_auth: ^2.1.7
 
 dev_dependencies:
   flutter_test:
@@ -60,6 +64,6 @@ flutter:
         - asset: assets/fonts/Inter_18pt-Regular.ttf
 
 localizations:
-    arb-dir: lib/l10n # Directorio donde estarán los archivos .arb
-    template-arb-file: app_es.arb # Archivo base de idioma
-    output-localization-file: app_localizations.dart # Archivo generado
+  arb-dir: lib/l10n # Directorio donde estarán los archivos .arb
+  template-arb-file: app_es.arb # Archivo base de idioma
+  output-localization-file: app_localizations.dart # Archivo generado
