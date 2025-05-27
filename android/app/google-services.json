@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "235481141951",
+    "project_id": "uniplanner-dcfe8",
+    "storage_bucket": "uniplanner-dcfe8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:235481141951:android:e558d5841e2893e1caec0a",
+        "android_client_info": {
+          "package_name": "com.example.uniplanner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "235481141951-erl8mrvd1dp1uamljtlll0m6lad469dr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.uniplanner",
+            "certificate_hash": "3cc16ea8cc4ff2c0bbe8f002a1826a6fd637b31e"
+          }
+        },
+        {
+          "client_id": "235481141951-cg1n3n0sibu5d8umd1vfoe3gtk6d8n0a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpQn082WDpV5YB8VvWQKdcp998AlM8RqA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "235481141951-cg1n3n0sibu5d8umd1vfoe3gtk6d8n0a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,12 @@
+{
+    "welcome": "Bienvenido Sr. {name}",
+    "@welcome": {
+      "description": "Mensaje de bienvenida con nombre",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    }
+  }
+  
