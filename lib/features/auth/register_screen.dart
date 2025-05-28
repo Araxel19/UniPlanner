@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:uniplanner/providers/auth_provider.dart';
 import 'email_verification_screen.dart';
 import 'package:uniplanner/services/auth_service.dart';
-import 'package:uniplanner/providers/GoogleAuthProvider.dart' as local_google_auth;
 
 class CrearCuenta extends StatefulWidget {
   const CrearCuenta({super.key});

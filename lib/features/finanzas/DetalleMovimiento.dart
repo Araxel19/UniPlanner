@@ -70,10 +70,10 @@ class DetalleMovimientoState extends State<DetalleMovimiento> {
                               ]),
                         ),
                       ),
-                      IntrinsicHeight(
+                      const IntrinsicHeight(
                         child: SizedBox(
                           width: double.infinity,
-                          child: const Column(children: [
+                          child: Column(children: [
                             Text(
                               "Cantidad",
                               style: TextStyle(
@@ -126,10 +126,10 @@ class DetalleMovimientoState extends State<DetalleMovimiento> {
                           ]),
                         ),
                       ),
-                      IntrinsicHeight(
+                      const IntrinsicHeight(
                         child: SizedBox(
                           width: double.infinity,
-                          child: const Column(children: [
+                          child: Column(children: [
                             Text(
                               "Categoría",
                               style: TextStyle(
@@ -182,10 +182,10 @@ class DetalleMovimientoState extends State<DetalleMovimiento> {
                           ]),
                         ),
                       ),
-                      IntrinsicHeight(
+                      const IntrinsicHeight(
                         child: SizedBox(
                           width: double.infinity,
-                          child: const Column(children: [
+                          child: Column(children: [
                             Text(
                               "Fecha",
                               style: TextStyle(
@@ -238,10 +238,10 @@ class DetalleMovimientoState extends State<DetalleMovimiento> {
                           ]),
                         ),
                       ),
-                      IntrinsicHeight(
+                      const IntrinsicHeight(
                         child: SizedBox(
                           width: double.infinity,
-                          child: const Column(children: [
+                          child: Column(children: [
                             Text(
                               "Hora",
                               style: TextStyle(

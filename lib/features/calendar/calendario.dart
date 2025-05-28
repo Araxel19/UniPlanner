@@ -830,7 +830,7 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
                           ),
                         ),
                         child: task.isCompleted
-                            ? Icon(Icons.check, size: 20, color: successColor)
+                            ? const Icon(Icons.check, size: 20, color: successColor)
                             : null,
                       ),
                     ),
