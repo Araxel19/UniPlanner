@@ -254,8 +254,11 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
               SwitchListTile(
                 title: const Text('Completada'),
                 value: _isCompleted,
-                onChanged:
-                    null, // No permitir cambiar aquí, solo en la vista principal
+                onChanged: (value) {
+                  setState(() {
+                    _isCompleted = value;
+                  });
+                },
                 secondary: Icon(
                   _isCompleted
                       ? Icons.check_circle

@@ -491,10 +491,58 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  bool _isEventExpired(Map<String, dynamic> item) {
+    if (item['type'] != 'event') return false;
+    try {
+      final now = DateTime.now();
+      final dateStr = item['date'];
+      final endTimeStr = item['endTime'];
+      if (dateStr == null || endTimeStr == null) return false;
+      final dateParts = dateStr.split('-');
+      if (dateParts.length != 3) return false;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final timeParts = endTimeStr.split(':');
+      if (timeParts.length != 2) return false;
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final eventEnd = DateTime(year, month, day, hour, minute);
+      return eventEnd.isBefore(now);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isTaskExpired(Map<String, dynamic> item) {
+    if (item['type'] != 'task') return false;
+    try {
+      final now = DateTime.now();
+      final dueDateStr = item['dueDate'];
+      final dueTimeStr = item['dueTime'];
+      if (dueDateStr == null || dueTimeStr == null) return false;
+      final dateParts = dueDateStr.split('-');
+      if (dateParts.length != 3) return false;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final timeParts = dueTimeStr.split(':');
+      if (timeParts.length != 2) return false;
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final dueDateTime = DateTime(year, month, day, hour, minute);
+      return dueDateTime.isBefore(now);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Widget _buildTaskItem(Map<String, dynamic> item) {
     final theme = Theme.of(context);
     final isEvent = item['type'] == 'event';
     final isTask = item['type'] == 'task';
+    final isExpired = isEvent ? _isEventExpired(item) : false;
+    final isTaskExpired = isTask ? _isTaskExpired(item) : false;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -531,11 +579,15 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Icon(
               isEvent ? Icons.calendar_today : Icons.assignment,
               size: 18,
-              color: isTask && item['isCompleted'] == 1
-                  ? Colors.green[800]
-                  : isEvent
-                      ? Colors.purple[800]
-                      : Colors.blue[800],
+              color: isExpired
+                  ? Colors.grey
+                  : isTaskExpired
+                      ? Colors.red
+                      : isTask && item['isCompleted'] == 1
+                          ? Colors.green[800]
+                          : isEvent
+                              ? Colors.purple[800]
+                              : Colors.blue[800],
             ),
           ),
           const SizedBox(width: 12),
@@ -549,12 +601,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     item['title'] ?? 'Sin título',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
-                      decoration: isTask && item['isCompleted'] == 1
+                      decoration: (isTask && item['isCompleted'] == 1) || isTaskExpired
                           ? TextDecoration.lineThrough
                           : null,
-                      color: isTask && item['isCompleted'] == 1
-                          ? Colors.grey[600]
-                          : null,
+                      color: isExpired
+                          ? Colors.grey
+                          : isTaskExpired
+                              ? Colors.red
+                              : isTask && item['isCompleted'] == 1
+                                  ? Colors.grey[600]
+                                  : null,
                     ),
                   ),
                   if (isEvent &&
@@ -565,10 +621,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         '${_formatTime(item['startTime'])} - ${_formatTime(item['endTime'])}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: (isTask && item['isCompleted'] == 1)
-                              ? Colors.grey[500]
-                              : theme.textTheme.bodySmall?.color
-                                  ?.withOpacity(0.7),
+                          color: isExpired
+                              ? Colors.grey
+                              : (isTask && item['isCompleted'] == 1)
+                                  ? Colors.grey[500]
+                                  : theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.7),
                           decoration: isTask && item['isCompleted'] == 1
                               ? TextDecoration.lineThrough
                               : null,
@@ -581,11 +639,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         _formatTime(item['dueTime']),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: item['isCompleted'] == 1
-                              ? Colors.grey[500]
-                              : theme.textTheme.bodySmall?.color
-                                  ?.withOpacity(0.7),
-                          decoration: isTask && item['isCompleted'] == 1
+                          color: isTaskExpired
+                              ? Colors.red
+                              : item['isCompleted'] == 1
+                                  ? Colors.grey[500]
+                                  : theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.7),
+                          decoration: (isTask && item['isCompleted'] == 1) || isTaskExpired
                               ? TextDecoration.lineThrough
                               : null,
                         ),
@@ -599,13 +659,17 @@ class _HomeScreenState extends State<HomeScreen> {
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: IconButton(
-                key: ValueKey(item['isCompleted']),
+                key: ValueKey(item['isCompleted'].toString() + isTaskExpired.toString()),
                 icon: Icon(
-                  item['isCompleted'] == 1
+                  (item['isCompleted'] == 1 || isTaskExpired)
                       ? Icons.check_circle
                       : Icons.radio_button_unchecked,
                   size: 20,
-                  color: item['isCompleted'] == 1 ? Colors.green : Colors.blue,
+                  color: item['isCompleted'] == 1
+                      ? Colors.green
+                      : isTaskExpired
+                          ? Colors.red
+                          : Colors.blue,
                 ),
                 onPressed: () => _toggleTaskCompletion(item, context),
                 padding: EdgeInsets.zero,

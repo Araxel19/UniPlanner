@@ -92,6 +92,7 @@ class _EditEventoState extends State<EditEvento> {
   }
 
   Future<void> _selectDate() async {
+    final theme = Theme.of(context);
     final date = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -99,18 +100,7 @@ class _EditEventoState extends State<EditEvento> {
       lastDate: DateTime(2100),
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Theme.of(context).colorScheme.onSurface,
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
+          data: theme, // Usa el tema actual del contexto
           child: child!,
         );
       },
@@ -119,18 +109,13 @@ class _EditEventoState extends State<EditEvento> {
   }
 
   Future<void> _selectStartTime() async {
+    final theme = Theme.of(context);
     final time = await showTimePicker(
       context: context,
       initialTime: _startTime,
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
+          data: theme, // Usa el tema actual del contexto
           child: child!,
         );
       },
@@ -139,18 +124,13 @@ class _EditEventoState extends State<EditEvento> {
   }
 
   Future<void> _selectEndTime() async {
+    final theme = Theme.of(context);
     final time = await showTimePicker(
       context: context,
       initialTime: _endTime,
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
+          data: theme, // Usa el tema actual del contexto
           child: child!,
         );
       },

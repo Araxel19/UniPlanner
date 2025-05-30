@@ -13,8 +13,11 @@ import 'package:uniplanner/providers/GoogleAuthProvider.dart';
 import 'firebase_options.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uniplanner/services/push_notification_service.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -23,6 +26,14 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz.initializeTimeZones();
+
+  // Usa flutter_timezone para obtener la zona local
+  final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+  tz.setLocalLocation(tz.getLocation(timeZoneName));
+
+  // Registrar el handler de background de FCM ANTES de inicializar Firebase
+  // Importante: el handler debe ser top-level y estar exportado en push_notification_service.dart
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Inicialización de notificaciones
   const AndroidInitializationSettings initializationSettingsAndroid =

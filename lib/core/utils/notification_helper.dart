@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:android_intent_plus/android_intent.dart';
@@ -16,6 +15,11 @@ Future<void> scheduleNotification({
   required DateTime scheduledDate,
 }) async {
   try {
+    print('Intentando programar notificación para $scheduledDate');
+    print('Ahora: ${DateTime.now()}');
+    print('scheduledDate: $scheduledDate');
+    print('tz local: ${tz.local}');
+    print('tz.TZDateTime: ${tz.TZDateTime.from(scheduledDate, tz.local)}');
     await flutterLocalNotificationsPlugin.zonedSchedule(
       id,
       title,
@@ -31,18 +35,14 @@ Future<void> scheduleNotification({
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.dateAndTime,
+      //matchDateTimeComponents: DateTimeComponents.dateAndTime,
     );
-  } on PlatformException catch (e) {
-    if (e.code == 'exact_alarms_not_permitted') {
-      await showPermissionDialog(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.message}')),
-      );
-    }
+    print('Notificación programada correctamente');
   } catch (e) {
-    debugPrint("Otro error: $e");
+    print('Error programando notificación: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error programando notificación: $e')),
+    );
   }
 }
 

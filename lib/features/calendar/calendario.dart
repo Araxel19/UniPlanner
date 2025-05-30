@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:uniplanner/core/utils/google_token_helper.dart';
 import 'package:uniplanner/providers/GoogleAuthProvider.dart' as my_auth;
 import 'package:uniplanner/services/google_calendar_service.dart';
+import 'package:uniplanner/services/push_notification_service.dart';
 import '../../shared_widgets/general/bottom_navigation.dart';
 import '../../shared_widgets/general/app_routes.dart';
 import 'package:intl/intl.dart';
@@ -34,6 +35,7 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
   late Animation<double> _fabAnimation;
   bool _googleTokenLoaded = false;
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  final PushNotificationService _pushNotificationService = PushNotificationService();
 
   @override
   void initState() {
@@ -145,6 +147,28 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
       final eventsData = eventsSnapshot.docs.map((doc) {
         return Event.fromMap({...doc.data(), 'id': doc.id});
       }).toList();
+
+      // --- PROGRAMA PUSH NOTIFICATION PARA CADA EVENTO DEL DÍA ---
+      for (final event in eventsData) {
+        try {
+          // Convierte la fecha y hora de inicio a DateTime
+          final startParts = event.startTime.split(':');
+          if (startParts.length == 2) {
+            final eventDateTime = DateTime(
+              day.year,
+              day.month,
+              day.day,
+              int.parse(startParts[0]),
+              int.parse(startParts[1]),
+            );
+            await _pushNotificationService.scheduleNotification(
+              eventDateTime,
+              title: '¡Tu evento está comenzando!',
+              body: 'El evento ${event.title} está a punto de comenzar',
+            );
+          }
+        } catch (_) {}
+      }
 
       final tasksData = tasksSnapshot.docs.map((doc) {
         return Task.fromMap({...doc.data(), 'id': doc.id});
@@ -466,6 +490,7 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
   }
 
   Widget _buildTaskItem(Task task, Color textColor) {
+    final isExpired = _isTaskExpired(task);
     return GestureDetector(
       onTap: () =>
           _showTaskDetails(task, context), // Mostrar detalles al tocar la tarea
@@ -492,30 +517,38 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
               onTap: () async {
                 await _toggleTaskCompletion(task, context);
               },
-              behavior: HitTestBehavior
-                  .opaque, // Asegura que toda el área sea tappable
+              behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: const EdgeInsets.all(8),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: Container(
-                    key: ValueKey<bool>(task.isCompleted),
+                    key: ValueKey('${task.isCompleted}_$isExpired'),
                     width: 24,
                     height: 24,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: task.isCompleted
                           ? Colors.green.withOpacity(0.2)
-                          : Colors.transparent,
+                          : isExpired
+                              ? Colors.red.withOpacity(0.2)
+                              : Colors.transparent,
                       border: Border.all(
-                        color: task.isCompleted ? Colors.green : Colors.blue,
+                        color: task.isCompleted
+                            ? Colors.green
+                            : isExpired
+                                ? Colors.red
+                                : Colors.blue,
                         width: 2,
                       ),
                     ),
                     child: Center(
-                      child: task.isCompleted
-                          ? const Icon(Icons.check,
-                              size: 16, color: Colors.green)
+                      child: (task.isCompleted || isExpired)
+                          ? Icon(Icons.check,
+                              size: 16,
+                              color: task.isCompleted
+                                  ? Colors.green
+                                  : Colors.red)
                           : null,
                     ),
                   ),
@@ -533,9 +566,11 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
                   Text(
                     task.title,
                     style: TextStyle(
-                      color: textColor,
+                      color: isExpired
+                          ? Colors.red
+                          : textColor,
                       fontSize: 14,
-                      decoration: task.isCompleted
+                      decoration: (task.isCompleted || isExpired)
                           ? TextDecoration.lineThrough
                           : TextDecoration.none,
                     ),
@@ -544,9 +579,11 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
                     Text(
                       task.dueTime,
                       style: TextStyle(
-                        color: textColor.withOpacity(0.6),
+                        color: isExpired
+                            ? Colors.red
+                            : textColor.withOpacity(0.6),
                         fontSize: 12,
-                        decoration: task.isCompleted
+                        decoration: (task.isCompleted || isExpired)
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
                       ),
@@ -566,7 +603,29 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
     );
   }
 
+  bool _isTaskExpired(Task task) {
+    try {
+      if (task.isCompleted) return false;
+      final now = DateTime.now();
+      final dateParts = task.dueDate.split('-');
+      if (dateParts.length != 3) return false;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      if (task.dueTime.isEmpty) return false;
+      final timeParts = task.dueTime.split(':');
+      if (timeParts.length != 2) return false;
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final dueDateTime = DateTime(year, month, day, hour, minute);
+      return dueDateTime.isBefore(now);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Widget _buildEventItem(Event event, Color textColor) {
+    final isExpired = _isEventExpired(event);
     return GestureDetector(
       onTap: () => _showEventDetails(event, context),
       child: Container(
@@ -582,21 +641,42 @@ class _CalendarioState extends State<Calendario> with TickerProviderStateMixin {
             Text(
               event.title,
               style: TextStyle(
-                color: textColor,
+                color: isExpired ? Colors.grey : textColor,
                 fontSize: 14,
+                decoration: isExpired ? TextDecoration.lineThrough : null,
               ),
             ),
             Text(
               '${event.startTime} - ${event.endTime}',
               style: TextStyle(
-                color: textColor.withOpacity(0.6),
+                color: isExpired ? Colors.grey : textColor.withOpacity(0.6),
                 fontSize: 12,
+                decoration: isExpired ? TextDecoration.lineThrough : null,
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  bool _isEventExpired(Event event) {
+    try {
+      final now = DateTime.now();
+      final dateParts = event.date.split('-');
+      if (dateParts.length != 3) return false;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final timeParts = event.endTime.split(':');
+      if (timeParts.length != 2) return false;
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final eventEnd = DateTime(year, month, day, hour, minute);
+      return eventEnd.isBefore(now);
+    } catch (_) {
+      return false;
+    }
   }
 
   void _showEventDetails(Event event, BuildContext context) {
