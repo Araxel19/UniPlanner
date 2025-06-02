@@ -6,13 +6,16 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:local_auth_android/local_auth_android.dart';
 import 'package:uniplanner/core/utils/notification_helper.dart';
 import '../../providers/theme_provider.dart';
 import '../../shared_widgets/general/configuracion_menu_item.dart';
 import '../home/home_screen.dart';
 import '../../shared_widgets/general/app_routes.dart';
 import 'dart:async';
-import 'package:uniplanner/providers/GoogleAuthProvider.dart' as local_auth_provider;
+import 'package:uniplanner/providers/GoogleAuthProvider.dart'
+    as local_auth_provider;
 
 class ConfiguracionScreen extends StatefulWidget {
   const ConfiguracionScreen({Key? key}) : super(key: key);
@@ -28,8 +31,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final ImagePicker _picker = ImagePicker();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final LocalAuthentication _localAuth = LocalAuthentication();
   String _lastLoginStatus = 'Cargando...';
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+  bool _isBiometricSetupChecked = false;
 
   final List<String> predefinedAvatars = [
     '😀',
@@ -56,6 +61,17 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _loadUserData();
     _loadThemePreference();
     _userDataSubscription?.cancel();
+
+    // Verificar configuración biométrica al inicializar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkBiometricSetup();
+    });
+  }
+
+  @override
+  void dispose() {
+    _userDataSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadThemePreference() async {
@@ -70,6 +86,352 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             Provider.of<ThemeProvider>(context, listen: false);
         themeProvider.toggleTheme(themePreference == 'dark');
       }
+    }
+  }
+
+  // Verificar la configuración del dispositivo al inicio
+  Future<void> _checkBiometricSetup() async {
+    try {
+      final bool isAvailable = await _localAuth.canCheckBiometrics;
+      final bool isDeviceSupported = await _localAuth.isDeviceSupported();
+
+      if (!isAvailable || !isDeviceSupported) {
+        debugPrint('Biometría no disponible en este dispositivo');
+        setState(() {
+          _isBiometricSetupChecked = true;
+        });
+        return;
+      }
+
+      final List<BiometricType> availableBiometrics =
+          await _localAuth.getAvailableBiometrics();
+
+      if (availableBiometrics.isEmpty) {
+        debugPrint('No hay métodos biométricos configurados');
+      } else {
+        debugPrint('Métodos biométricos disponibles: $availableBiometrics');
+      }
+
+      setState(() {
+        _isBiometricSetupChecked = true;
+      });
+    } catch (e) {
+      debugPrint('Error verificando configuración biométrica: $e');
+      setState(() {
+        _isBiometricSetupChecked = true;
+      });
+    }
+  }
+
+  // Verificar disponibilidad de autenticación biométrica con mejor manejo de errores
+  Future<bool> _isBiometricAvailable() async {
+    try {
+      // Verificar si el contexto aún está montado
+      if (!mounted) return false;
+
+      final bool isAvailable = await _localAuth.canCheckBiometrics;
+      final bool isDeviceSupported = await _localAuth.isDeviceSupported();
+
+      if (!isAvailable || !isDeviceSupported) {
+        return false;
+      }
+
+      final List<BiometricType> availableBiometrics =
+          await _localAuth.getAvailableBiometrics();
+
+      return availableBiometrics.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error verificando biometría: $e');
+      return false;
+    }
+  }
+
+  // Autenticar con biometría con mejor manejo de errores y contexto
+  Future<bool> _authenticateWithBiometrics() async {
+    try {
+      // Verificar que el widget esté montado antes de continuar
+      if (!mounted) return false;
+
+      // Esperar un frame para asegurar que el contexto esté disponible
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (!mounted) return false;
+
+      final bool isAvailable = await _isBiometricAvailable();
+
+      if (!isAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'La autenticación biométrica no está disponible o configurada en este dispositivo'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return false;
+      }
+
+      // Usar un contexto más específico para la autenticación
+      final bool didAuthenticate = await _localAuth.authenticate(
+        localizedReason:
+            'Verifica tu identidad para acceder a la configuración de usuario',
+        authMessages: const [
+          AndroidAuthMessages(
+            signInTitle: 'Autenticación requerida',
+            cancelButton: 'Cancelar',
+            deviceCredentialsRequiredTitle: 'Credenciales requeridas',
+            deviceCredentialsSetupDescription:
+                'Configura tu método de autenticación en la configuración del dispositivo',
+            goToSettingsButton: 'Ir a configuración',
+            goToSettingsDescription:
+                'Configura tu huella dactilar, reconocimiento facial o PIN en la configuración del dispositivo',
+          ),
+        ],
+        options: const AuthenticationOptions(
+          biometricOnly: false, // Permitir PIN/patrón como alternativa
+          stickyAuth: true,
+          sensitiveTransaction: false,
+        ),
+      );
+
+      return didAuthenticate;
+    } catch (e) {
+      debugPrint('Error en autenticación biométrica: $e');
+
+      if (!mounted) return false;
+
+      // Manejar errores específicos
+      String errorMessage = 'Error en la autenticación';
+
+      if (e.toString().contains('UserCancel')) {
+        // Usuario canceló la autenticación
+        return false;
+      } else if (e.toString().contains('NotAvailable')) {
+        errorMessage = 'Autenticación biométrica no disponible';
+      } else if (e.toString().contains('NotEnrolled')) {
+        errorMessage =
+            'No hay métodos de autenticación configurados. Ve a Configuración del dispositivo para configurar huella dactilar, reconocimiento facial o PIN.';
+      } else if (e.toString().contains('no_fragment_activity')) {
+        errorMessage =
+            'Error de configuración de la aplicación. Por favor, reinicia la aplicación.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          action: e.toString().contains('NotEnrolled')
+              ? SnackBarAction(
+                  label: 'Configurar',
+                  onPressed: () {
+                    // Aquí podrías abrir la configuración del sistema
+                    // O mostrar instrucciones adicionales
+                  },
+                )
+              : null,
+        ),
+      );
+      return false;
+    }
+  }
+
+  // Función alternativa para mostrar diálogo sin autenticación biométrica
+  Future<void> _showUserConfigDialogWithPassword() async {
+    final passwordController = TextEditingController();
+    bool isVerifying = false;
+    bool obscurePassword = true;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock_outline),
+              SizedBox(width: 8),
+              Text('Verificación requerida'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Ingresa tu contraseña actual para continuar:'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                enabled: !isVerifying,
+                decoration: InputDecoration(
+                  labelText: 'Contraseña actual',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscurePassword
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                    onPressed: () {
+                      setState(() {
+                        obscurePassword = !obscurePassword;
+                      });
+                    },
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: isVerifying
+                    ? null
+                    : (_) async {
+                        // Verificar contraseña al presionar Enter
+                        if (passwordController.text.isNotEmpty) {
+                          setState(() => isVerifying = true);
+                          final verified = await _verifyCurrentPassword(
+                              passwordController.text);
+                          if (verified && context.mounted) {
+                            Navigator.of(context).pop(true);
+                          } else {
+                            setState(() => isVerifying = false);
+                          }
+                        }
+                      },
+              ),
+              if (isVerifying) ...[
+                const SizedBox(height: 16),
+                const CircularProgressIndicator(),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  isVerifying ? null : () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: isVerifying || passwordController.text.isEmpty
+                  ? null
+                  : () async {
+                      setState(() => isVerifying = true);
+                      final verified =
+                          await _verifyCurrentPassword(passwordController.text);
+                      if (verified && context.mounted) {
+                        Navigator.of(context).pop(true);
+                      } else {
+                        setState(() => isVerifying = false);
+                      }
+                    },
+              child: const Text('Verificar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    passwordController.dispose();
+
+    if (result == true && mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => _UserConfigDialog(
+          currentUserName: _userName,
+          onUserUpdated: _loadUserData,
+          firestore: _firestore,
+          auth: _auth,
+        ),
+      );
+    }
+  }
+
+  // Verificar contraseña actual
+  Future<bool> _verifyCurrentPassword(String password) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) return false;
+
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: password,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+      return true;
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Contraseña incorrecta';
+        if (e.toString().contains('wrong-password')) {
+          errorMessage = 'La contraseña es incorrecta';
+        } else if (e.toString().contains('too-many-requests')) {
+          errorMessage = 'Demasiados intentos. Intenta más tarde.';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  // Mostrar diálogo de configuración de usuario con múltiples opciones de autenticación
+  Future<void> _showUserConfigDialog() async {
+    if (!_isBiometricSetupChecked) {
+      // Esperar a que se complete la verificación inicial
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    // Intentar primero autenticación biométrica
+    final biometricAvailable = await _isBiometricAvailable();
+
+    if (biometricAvailable) {
+      final biometricAuth = await _authenticateWithBiometrics();
+      if (biometricAuth && mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+            child: _UserConfigDialog(
+              currentUserName: _userName,
+              onUserUpdated: _loadUserData,
+              firestore: _firestore,
+              auth: _auth,
+            ),
+          ),
+        );
+        return;
+      }
+
+      // Si falló la biométrica, ofrecer alternativa
+      if (mounted) {
+        final shouldTryPassword = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Autenticación alternativa'),
+            content: const Text(
+                '¿Deseas usar tu contraseña en lugar de la autenticación biométrica?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Usar contraseña'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldTryPassword == true) {
+          await _showUserConfigDialogWithPassword();
+        }
+      }
+    } else {
+      // Si no hay biometría disponible, usar contraseña directamente
+      await _showUserConfigDialogWithPassword();
     }
   }
 
@@ -98,11 +460,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
   Future<void> _logout(BuildContext context) async {
     try {
-      // Cancelar todos los streams antes de cerrar sesión
       _userDataSubscription?.cancel();
-
       await _auth.signOut();
-      Provider.of<local_auth_provider.GoogleAuthProvider>(context, listen: false).clearAccessToken();
+      Provider.of<local_auth_provider.GoogleAuthProvider>(context,
+              listen: false)
+          .clearAccessToken();
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
@@ -133,7 +495,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         _selectedEmoji = data?['avatarEmoji'] ?? '👤';
       });
 
-      // Cargar imagen desde Base64 si existe
       final imageBase64 = data?['avatarBase64'];
       if (imageBase64 != null && imageBase64 is String) {
         setState(() {
@@ -141,7 +502,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         });
       }
 
-      // Calcular estado de actividad
       final Timestamp? lastLoginTimestamp = data?['lastLogin'];
       if (lastLoginTimestamp != null) {
         final lastLogin = lastLoginTimestamp.toDate();
@@ -183,13 +543,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     if (user == null) return;
 
     try {
-      // Convertir a Base64
       final base64Image = await _imageToBase64(image);
       if (base64Image == null) return;
 
-      // Verificar tamaño (Firestore limita documentos a 1MB)
       if (base64Image.length > 900000) {
-        // ~900KB dejando espacio para otros campos
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('La imagen es demasiado grande (máx. ~900KB)')),
@@ -199,10 +556,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
       setState(() => _userImage = image);
 
-      // Actualizar Firestore
       await _firestore.collection('users').doc(user.uid).update({
         'avatarBase64': base64Image,
-        'avatarEmoji': null, // Limpiar emoji
+        'avatarEmoji': null,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -220,7 +576,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     if (user == null) return;
 
     try {
-      // Actualizar Firestore
       await _firestore.collection('users').doc(user.uid).update({
         'avatarBase64': null,
         'avatarEmoji': emoji,
@@ -253,29 +608,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       return 'Activo hace ${diff.inHours} h';
     } else {
       return 'Activo hace ${diff.inDays} d';
-    }
-  }
-
-  Future<void> _updateUsername(String newName) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    try {
-      // Actualizar en Firebase Auth
-      await user.updateDisplayName(newName);
-
-      // Actualizar en Firestore
-      await _firestore.collection('users').doc(user.uid).update({
-        'displayName': newName,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      setState(() => _userName = newName);
-    } catch (e) {
-      debugPrint('Error al actualizar nombre: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar nombre: $e')),
-      );
     }
   }
 
@@ -336,7 +668,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       },
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(50),
                         ),
                         child: Center(
@@ -360,7 +694,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  tileColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -622,83 +957,389 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         ConfiguracionMenuItem(
           icon: Icons.person_outline,
           title: 'Configuración de usuario',
-          description: 'Usuario',
-          onTap: () {
-            TextEditingController controller =
-                TextEditingController(text: _userName);
-            showDialog(
-              context: context,
-              builder: (context) {
-                return AlertDialog(
-                  title: const Text('Editar nombre de usuario'),
-                  content: TextField(
-                    controller: controller,
-                    decoration: const InputDecoration(labelText: 'Nombre'),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancelar'),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        try {
-                          await _updateUsername(controller.text);
-                          Navigator.pop(context);
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error al actualizar: $e')),
-                          );
-                        }
-                      },
-                      child: const Text('Guardar'),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-        ConfiguracionMenuItem(
-          icon: Icons.notifications_active_outlined,
-          title: 'Probar notificación',
-          description: 'Envía una notificación de prueba',
-          onTap: () async {
-            await flutterLocalNotificationsPlugin.show(
-              9999,
-              'Notificación de prueba',
-              '¡Esto es una notificación local!',
-              const NotificationDetails(
-                android: AndroidNotificationDetails(
-                  'tareas_channel',
-                  'Tareas y eventos',
-                  channelDescription: 'Notificaciones de tareas y eventos',
-                  importance: Importance.max,
-                  priority: Priority.high,
-                ),
-              ),
-            );
-          },
-        ),
-        ConfiguracionMenuItem(
-          icon: Icons.schedule,
-          title: 'Programar notificación',
-          description: 'Notificación',
-          onTap: () async {
-            final scheduledDate = DateTime.now().add(const Duration(minutes: 2));
-            await scheduleNotification(
-              context: context,
-              id: 10001,
-              title: 'Notificación programada',
-              body: '¡Esto es una notificación programada para dentro de 2 minuto!',
-              scheduledDate: scheduledDate,
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Notificación programada para dentro de 2 minuto')),
-            );
-          },
+          description: 'Usuario y contraseña',
+          onTap: _showUserConfigDialog,
         ),
       ],
+    );
+  }
+}
+
+// Widget separado para el diálogo de configuración de usuario
+class _UserConfigDialog extends StatefulWidget {
+  final String currentUserName;
+  final VoidCallback onUserUpdated;
+  final FirebaseFirestore firestore;
+  final FirebaseAuth auth;
+
+  const _UserConfigDialog({
+    required this.currentUserName,
+    required this.onUserUpdated,
+    required this.firestore,
+    required this.auth,
+  });
+
+  @override
+  State<_UserConfigDialog> createState() => _UserConfigDialogState();
+}
+
+class _UserConfigDialogState extends State<_UserConfigDialog> {
+  late TextEditingController _nameController;
+  late TextEditingController _currentPasswordController;
+  late TextEditingController _newPasswordController;
+  late TextEditingController _confirmPasswordController;
+  bool _isChangingPassword = false;
+  bool _isLoading = false;
+  bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.currentUserName);
+    _currentPasswordController = TextEditingController();
+    _newPasswordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updateUserName() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty || name.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('El nombre debe tener al menos 3 caracteres')),
+      );
+      return;
+    }
+    if (name.length > 30) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('El nombre no puede tener más de 30 caracteres')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = widget.auth.currentUser;
+      if (user == null) throw Exception('Usuario no autenticado');
+
+      await user.updateDisplayName(name);
+      await widget.firestore.collection('users').doc(user.uid).update({
+        'displayName': name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      widget.onUserUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nombre actualizado correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar nombre: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updatePassword() async {
+    if (_newPasswordController.text.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('La contraseña debe tener al menos 8 caracteres')),
+      );
+      return;
+    }
+
+    if (_newPasswordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Las contraseñas no coinciden')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = widget.auth.currentUser;
+      if (user == null) throw Exception('Usuario no autenticado');
+
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: _currentPasswordController.text,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(_newPasswordController.text);
+
+      await widget.firestore.collection('users').doc(user.uid).update({
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        _currentPasswordController.clear();
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+        setState(() => _isChangingPassword = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Contraseña actualizada correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Error al actualizar contraseña';
+        if (e.toString().contains('wrong-password')) {
+          errorMessage = 'La contraseña actual es incorrecta';
+        } else if (e.toString().contains('weak-password')) {
+          errorMessage = 'La nueva contraseña es muy débil';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: 340,
+        maxWidth: 420, 
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.security, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Configuración de usuario',
+                    style: theme.textTheme.titleMedium,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Nombre de usuario',
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _nameController,
+              maxLength: 30,
+              decoration: InputDecoration(
+                labelText: 'Nombre (mínimo 3, máximo 30)',
+                prefixIcon: const Icon(Icons.person),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceVariant,
+                counterText: '',
+              ),
+              enabled: !_isLoading,
+            ),
+            const SizedBox(height: 12),
+            Divider(color: theme.dividerColor),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: _isChangingPassword,
+                    onChanged: _isLoading
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _isChangingPassword = value ?? false;
+                              if (!_isChangingPassword) {
+                                _currentPasswordController.clear();
+                                _newPasswordController.clear();
+                                _confirmPasswordController.clear();
+                              }
+                            });
+                          },
+                  ),
+                  const Text('Cambiar contraseña'),
+                ],
+              ),
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _isChangingPassword
+                  ? Column(
+                      key: const ValueKey('passwordFields'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        Text(
+                          'Cambio de contraseña',
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _currentPasswordController,
+                          obscureText: _obscureCurrentPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Contraseña actual',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscureCurrentPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureCurrentPassword = !_obscureCurrentPassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceVariant,
+                          ),
+                          enabled: !_isLoading,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _newPasswordController,
+                          obscureText: _obscureNewPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Nueva contraseña (mínimo 8)',
+                            prefixIcon: const Icon(Icons.lock),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscureNewPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureNewPassword = !_obscureNewPassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceVariant,
+                            helperText: 'Mínimo 8 caracteres',
+                          ),
+                          enabled: !_isLoading,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _confirmPasswordController,
+                          obscureText: _obscureConfirmPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Confirmar nueva contraseña',
+                            prefixIcon: const Icon(Icons.lock_reset),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscureConfirmPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceVariant,
+                          ),
+                          enabled: !_isLoading,
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            if (_isLoading) ...[
+              const SizedBox(height: 16),
+              const Center(child: CircularProgressIndicator()),
+            ],
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _isLoading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          if (_nameController.text.trim() != widget.currentUserName) {
+                            await _updateUserName();
+                          }
+                          if (_isChangingPassword) {
+                            await _updatePassword();
+                          } else if (_nameController.text.trim() != widget.currentUserName) {
+                            Navigator.pop(context);
+                          }
+                          if (_isChangingPassword &&
+                              _currentPasswordController.text.isEmpty &&
+                              _newPasswordController.text.isEmpty &&
+                              _confirmPasswordController.text.isEmpty) {
+                            Navigator.pop(context);
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -635,6 +635,21 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
     final task = doc.data() as Map<String, dynamic>;
     final isCompleted = task['isCompleted'] ?? false;
 
+    // Determinar si la tarea está vencida
+    bool isOverdue = false;
+    if (task['dueDate'] != null && !isCompleted) {
+      try {
+        final dueDate = DateFormat('yyyy-MM-dd').parse(task['dueDate']);
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        if (dueDate.isBefore(today)) {
+          isOverdue = true;
+        }
+      } catch (_) {
+        // Si el formato falla, no marcar como vencida
+      }
+    }
+
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       elevation: 1,
@@ -661,7 +676,9 @@ class _RecordatoriosScreenState extends State<RecordatoriosScreen> {
                 decoration: isCompleted ? TextDecoration.lineThrough : null,
                 color: isCompleted
                     ? Theme.of(context).disabledColor
-                    : Theme.of(context).textTheme.bodyLarge?.color,
+                    : isOverdue
+                        ? Colors.red
+                        : Theme.of(context).textTheme.bodyLarge?.color,
               ),
         ),
         subtitle: Column(

@@ -7,7 +7,8 @@
     <application
         android:label="uniplanner"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -26,6 +27,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        
+        <!-- Actividad adicional para manejar la autenticación biométrica -->
+        <activity
+            android:name="io.flutter.embedding.android.FlutterFragmentActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:windowSoftInputMode="adjustResize">
+        </activity>
+        
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
