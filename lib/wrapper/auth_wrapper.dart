@@ -10,9 +10,53 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:uniplanner/core/utils/google_token_helper.dart';
 import 'package:uniplanner/providers/GoogleAuthProvider.dart' as local_google_auth_provider;
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _biometricChecked = false;
+  bool _biometricPassed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricLock();
+  }
+
+  Future<void> _checkBiometricLock() async {
+    final prefs = await SharedPreferences.getInstance();
+    final biometricEnabled = prefs.getBool('biometricLockEnabled') ?? false;
+
+    if (biometricEnabled) {
+      final localAuth = LocalAuthentication();
+      final canCheck = await localAuth.canCheckBiometrics && await localAuth.isDeviceSupported();
+      if (canCheck) {
+        final didAuthenticate = await localAuth.authenticate(
+          localizedReason: 'Desbloquea la app con tu huella digital',
+          options: const AuthenticationOptions(
+            biometricOnly: true,
+            stickyAuth: true,
+          ),
+        );
+        setState(() {
+          _biometricPassed = didAuthenticate;
+          _biometricChecked = true;
+        });
+        return;
+      }
+    }
+    setState(() {
+      _biometricPassed = true; // No se requiere biometría
+      _biometricChecked = true;
+    });
+  }
 
   Future<void> _loadUserData(BuildContext context, String userId) async {
     final userDoc = await FirebaseFirestore.instance
@@ -75,6 +119,18 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<auth_provider.AuthProvider>(context);
 
+    if (!_biometricChecked) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_biometricPassed) {
+      return const Scaffold(
+        body: Center(child: Text('Autenticación biométrica requerida para acceder')),
+      );
+    }
+
     if (!authProvider.initialAuthCheckComplete) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -82,7 +138,6 @@ class AuthWrapper extends StatelessWidget {
     }
 
     if (authProvider.user != null) {
-      // Usar FutureBuilder para cargar datos con el contexto correcto
       return FutureBuilder(
         future: _loadUserData(context, authProvider.user!.uid),
         builder: (context, snapshot) {

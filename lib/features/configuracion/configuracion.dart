@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:local_auth_android/local_auth_android.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uniplanner/core/utils/notification_helper.dart';
 import '../../providers/theme_provider.dart';
 import '../../shared_widgets/general/configuracion_menu_item.dart';
@@ -62,8 +63,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _loadUserData();
     _loadThemePreference();
     _userDataSubscription?.cancel();
-
-    // Verificar configuración biométrica al inicializar
+    _loadBiometricLockPreference(); // <--- aquí
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkBiometricSetup();
     });
@@ -707,6 +707,23 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     );
   }
 
+  // Cargar preferencia al iniciar
+  Future<void> _loadBiometricLockPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _biometricLockEnabled = prefs.getBool('biometricLockEnabled') ?? false;
+    });
+  }
+
+  // Guardar preferencia
+  Future<void> _setBiometricLockPreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('biometricLockEnabled', value);
+    setState(() {
+      _biometricLockEnabled = value;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -960,6 +977,25 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           title: 'Configuración de usuario',
           description: 'Usuario y contraseña',
           onTap: _showUserConfigDialog,
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.fingerprint),
+          title: const Text('Huella Digital'),
+          subtitle: const Text('Usar huella digital para acceder a la app'),
+          value: _biometricLockEnabled,
+          onChanged: (value) async {
+            await _setBiometricLockPreference(value);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  value
+                      ? 'Bloqueo por huella digital activado'
+                      : 'Bloqueo por huella digital desactivado',
+                ),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
         ),
       ],
     );
