@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:uniplanner/core/utils/notification_helper.dart';
 
 class EditTaskReminderScreen extends StatefulWidget {
   final Map<String, dynamic> task;
@@ -81,6 +83,28 @@ class _EditTaskReminderScreenState extends State<EditTaskReminderScreen> {
         'listName': _selectedList,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Programar notificación solo si la fecha y hora son en el futuro
+      final DateTime scheduledDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
+      final tz.TZDateTime tzScheduledDate = tz.TZDateTime.from(scheduledDate, tz.local);
+
+      if (tzScheduledDate.isAfter(tz.TZDateTime.now(tz.local))) {
+        await scheduleNotification(
+          context: context,
+          id: widget.task['id'].hashCode, // Usa el id de la tarea para evitar duplicados
+          title: 'Recordatorio actualizado: ${_titleController.text}',
+          body: _descriptionController.text.isNotEmpty
+              ? _descriptionController.text
+              : 'Tienes una tarea pendiente',
+          scheduledDate: tzScheduledDate,
+        );
+      }
 
       if (!mounted) return;
       Navigator.pop(context, true);

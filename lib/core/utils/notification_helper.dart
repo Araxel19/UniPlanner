@@ -12,19 +12,20 @@ Future<void> scheduleNotification({
   required int id,
   required String title,
   required String body,
-  required DateTime scheduledDate,
+  required tz.TZDateTime scheduledDate, 
 }) async {
+  if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+    print('No se programa notificación porque la fecha ya pasó. Stack:');
+    print(StackTrace.current);
+    return;
+  }
   try {
     print('Intentando programar notificación para $scheduledDate');
-    print('Ahora: ${DateTime.now()}');
-    print('scheduledDate: $scheduledDate');
-    print('tz local: ${tz.local}');
-    print('tz.TZDateTime: ${tz.TZDateTime.from(scheduledDate, tz.local)}');
     await flutterLocalNotificationsPlugin.zonedSchedule(
       id,
       title,
       body,
-      tz.TZDateTime.from(scheduledDate, tz.local),
+      scheduledDate, // <-- pásalo directo
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'tareas_channel',
@@ -35,7 +36,6 @@ Future<void> scheduleNotification({
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      //matchDateTimeComponents: DateTimeComponents.dateAndTime,
     );
     print('Notificación programada correctamente');
   } catch (e) {

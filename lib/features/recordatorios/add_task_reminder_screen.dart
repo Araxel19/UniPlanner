@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:uniplanner/core/utils/notification_helper.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class AddTaskReminderScreen extends StatefulWidget {
   final String userId;
@@ -104,7 +105,7 @@ class _AddTaskReminderScreenState extends State<AddTaskReminderScreen> {
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
-      await FirebaseFirestore.instance
+      final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('tasks')
@@ -118,21 +119,27 @@ class _AddTaskReminderScreenState extends State<AddTaskReminderScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Notificación local al agregar recordatorio
-      await flutterLocalNotificationsPlugin.show(
-        5555,
-        'Recordatorio agregado',
-        '¡El recordatorio se agregó correctamente!',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'tareas_channel',
-            'Tareas y eventos',
-            channelDescription: 'Notificaciones de tareas y eventos',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
+      // Notificación programada
+      final DateTime scheduledDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
       );
+      final tz.TZDateTime tzScheduledDate = tz.TZDateTime.from(scheduledDate, tz.local);
+
+      if (tzScheduledDate.isAfter(tz.TZDateTime.now(tz.local))) {
+        await scheduleNotification(
+          context: context,
+          id: docRef.id.hashCode, // <-- ¡Así!
+          title: 'Recordatorio: ${_titleController.text}',
+          body: _descriptionController.text.isNotEmpty
+              ? _descriptionController.text
+              : 'Tienes una tarea pendiente',
+          scheduledDate: tzScheduledDate,
+        );
+      }
 
       if (!mounted) return;
       Navigator.pop(context, true);

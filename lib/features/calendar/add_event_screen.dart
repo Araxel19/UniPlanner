@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uniplanner/core/utils/notification_helper.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class AggEvento extends StatefulWidget {
   final String userId;
@@ -70,13 +71,19 @@ class _AggEventoState extends State<AggEvento> {
         _startTime!.minute,
       );
 
-      await scheduleNotification(
-        id: docRef.id.hashCode, // Usa el hash del ID del evento como identificador único
-        title: '¡Tienes un evento!',
-        body: _titleController.text,
-        // ignore: use_build_context_synchronously
-        scheduledDate: scheduledDate, context: context,
-      );
+      // Convierte a TZDateTime
+      final tz.TZDateTime tzScheduledDate = tz.TZDateTime.from(scheduledDate, tz.local);
+
+      // Solo programa la notificación si la fecha es futura
+      if (tzScheduledDate.isAfter(tz.TZDateTime.now(tz.local))) {
+        await scheduleNotification(
+          id: docRef.id.hashCode,
+          title: '¡Tienes un evento!',
+          body: _titleController.text,
+          scheduledDate: tzScheduledDate,
+          context: context,
+        );
+      }
 
        await flutterLocalNotificationsPlugin.show(
               1111,

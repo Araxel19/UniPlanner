@@ -35,6 +35,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   String _lastLoginStatus = 'Cargando...';
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
   bool _isBiometricSetupChecked = false;
+  bool _biometricLockEnabled = false;
 
   final List<String> predefinedAvatars = [
     '😀',
